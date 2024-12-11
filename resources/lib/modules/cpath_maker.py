@@ -80,6 +80,7 @@ main_include_dict = {
     "custom3": {"main_menu": None, "widget": "Custom3Widgets"},
 }
 widget_types = (
+    ("Spotlight", "WidgetListSpotlight"),
     ("Feature Poster", "FeatureWidgetListPoster"),
     ("Poster", "WidgetListPoster"),
     ("Small Poster", "SmallWidgetListPoster"),
@@ -88,6 +89,7 @@ widget_types = (
     ("Category", "WidgetListCategory"),
 )
 stacked_widget_types = (
+    ("Spotlight", "WidgetListSpotlight"),
     ("Feature Poster", "FeatureWidgetListPoster"),
     ("Poster", "WidgetListPoster"),
     ("Small Poster", "SmallWidgetListPoster"),
@@ -425,7 +427,7 @@ class CPaths:
     #     return widget_types[choice]
 
     def widget_type(
-        self, label="Choose widget display type", type_limit=6, types=widget_types
+        self, label="Choose widget display type", type_limit=7, types=widget_types
     ):
         choice = dialog.select(label, [i[0] for i in types[0:type_limit]])
         if choice == -1:
@@ -636,7 +638,7 @@ class CPaths:
     def create_and_update_widget(
         self, cpath_setting, cpath_path, cpath_header, add_to_db=True
     ):
-        label_color = self.get_skin_variable("MenuSelectorColor")
+        label_color = self.get_skin_variable("FocusColorTheme")
         widget_type = self.widget_type()
         if widget_type[0] == "Category" and dialog.yesno(
             "Stacked widget",
