@@ -21,12 +21,12 @@ def show_changelog():
         changelog_text = changelog_text.decode("utf-8")
     changelog_text = re.sub(
         r"\[COLOR \w+\](Version \d+\.\d+\.\d+)\[/COLOR\]",
-        f"[COLOR $VAR[MenuSelectorColor]]\\1[/COLOR]",
+        f"[COLOR $VAR[FocusColorTheme]]\\1[/COLOR]",
         changelog_text,
     )
     changelog_text = re.sub(
         r"\[COLOR \w+\](Version \$INFO\[.*?\])\[/COLOR\]",
-        f"[COLOR $VAR[MenuSelectorColor]]\\1[/COLOR]",
+        f"[COLOR $VAR[FocusColorTheme]]\\1[/COLOR]",
         changelog_text,
     )
     helper_pattern = r"(Altus Helper: Latest: v([\d.]+)) \| Installed: v.*"
@@ -68,36 +68,3 @@ def set_image():
     if image_file:
         xbmc.executebuiltin(f"Skin.SetString(LastImagePath,{image_file})")
         xbmc.executebuiltin(f"Skin.SetString(AltusCustomBackground,{image_file})")
-
-
-def set_blurradius():
-    current_value = xbmc.getInfoLabel("Skin.String(BlurRadius)") or "30"
-    dialog = xbmcgui.Dialog()
-    value = dialog.numeric(0, "Enter blur radius value", current_value)
-    if value == "":
-        value = "30"
-    xbmc.executebuiltin(f"Skin.SetString(BlurRadius,{value})")
-
-
-def set_blursaturation():
-    current_value = xbmc.getInfoLabel("Skin.String(BlurSaturation)") or "1.5"
-    keyboard = xbmc.Keyboard(current_value, "Enter blur saturation value")
-    keyboard.doModal()
-    if keyboard.isConfirmed():
-        text = keyboard.getText()
-        if text == "":
-            text = "1.5"
-        xbmc.executebuiltin(f"Skin.SetString(BlurSaturation,{text})")
-
-
-def set_autoendplaybackdelay():
-    current_value = xbmc.getInfoLabel("Skin.String(PlaybackDelayMins)") or "30"
-    dialog = xbmcgui.Dialog()
-    value_mins = dialog.numeric(0, "Enter delay in minutes", current_value)
-    if value_mins == "":
-        value_mins = "30"
-        value_secs = 1800
-    else:
-        value_secs = int(value_mins) * 60
-    xbmc.executebuiltin(f"Skin.SetString(PlaybackDelayMins,{value_mins})")
-    xbmc.executebuiltin(f"Skin.SetString(PlaybackDelaySecs,{value_secs})")
