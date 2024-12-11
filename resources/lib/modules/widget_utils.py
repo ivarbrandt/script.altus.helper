@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import xbmc, xbmcgui
-
 # from modules.logger import logger
 
 
@@ -19,18 +18,19 @@ def widget_monitor(list_id):
         )
     except:
         delay = 0.75
-    # display_delay = (
-    #     xbmc.getInfoLabel("Skin.HasSetting(altus_category_widget_display_delay)")
-    #     == "True"
-    # )
+    display_delay = (
+        xbmc.getInfoLabel("Skin.HasSetting(altus_category_widget_display_delay)")
+        == "True"
+    )
     stack_id = list_id + "1"
-    poster_toggle, landscape_toggle = True, False
+    # poster_toggle, landscape_toggle = True, False
     while not monitor.abortRequested():
         window_id = xbmcgui.getCurrentWindowId()
         if window_id not in [10000, 11121]:
             break
         else:
             window = xbmcgui.Window(window_id)
+            home_window = xbmcgui.Window(10000)
             stack_control = window.getControl(int(stack_id))
             stack_label_control = (
                 window.getControl(int(stack_id + "666"))
@@ -43,6 +43,10 @@ def widget_monitor(list_id):
                 or window.getControl(int(stack_id + "673"))
                 or window.getControl(int(stack_id + "674"))
             )
+            try:
+                countdown_label = window.getControl(int(list_id + "999"))
+            except:
+                break
         monitor.waitForAbort(0.25)
         if list_id != str(window.getFocusId()):
             break
@@ -67,19 +71,24 @@ def widget_monitor(list_id):
                 switch_widget = False
             if xbmcgui.getCurrentWindowId() not in [10000, 11121]:
                 switch_widget = False
-            # widget_label = xbmc.getInfoLabel("ListItem.Label")
-            # label_color = get_skin_variable("MenuSelectorColor")
-            # if display_delay:
-            #     stack_label_control.setLabel(
-            #         "Loading [COLOR {}][B]{{}}[/B][/COLOR] in [B]%0.2f[/B] seconds".format(
-            #             label_color
-            #         ).format(
-            #             widget_label
-            #         )
-            #         % (countdown)
-            #     )
+            widget_label = xbmc.getInfoLabel("ListItem.Label")
+            label_color = get_skin_variable("FocusColorTheme")
+            if display_delay:
+                home_window.setProperty("altus.countdown_active", "true")
+                try:
+                    countdown_label.setLabel(
+                        "Loading [COLOR {}][B]{{}}[/B][/COLOR] in [B]%0.2f[/B] seconds".format(
+                            label_color
+                        ).format(
+                            widget_label
+                        )
+                        % (countdown)
+                    )
+                except:
+                    pass
+        home_window.clearProperty("altus.countdown_active")
         if switch_widget:
-            position = int(xbmc.getInfoLabel("Container(%s).Position" % list_id))
+            # position = int(xbmc.getInfoLabel("Container(%s).Position" % list_id))
             cpath_label = xbmc.getInfoLabel("ListItem.Label")
             stack_label_control.setLabel(cpath_label)
             window.setProperty("altus.%s.label" % list_id, cpath_label)
@@ -105,6 +114,38 @@ def widget_monitor(list_id):
     except:
         pass
     try:
+        del window
+        del home_window
+    except:
+        pass
+
+def widget_info_timer(list_id):
+    monitor = xbmc.Monitor()
+    window = xbmcgui.Window(xbmcgui.getCurrentWindowId())
+    try:
+        delay = float(xbmc.getInfoLabel("Skin.String(altus_widget_autoinfo_delay)"))
+    except:
+        delay = 750
+    delay_seconds = delay / 1000
+    last_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
+    countdown = delay_seconds
+    while not monitor.abortRequested():
+        monitor.waitForAbort(0.25)
+        current_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
+        if current_item != last_item:
+            last_item = current_item
+            countdown = delay_seconds
+            window.clearProperty(f"WidgetInfo.Timer.Complete.{list_id}")
+            continue
+        if not xbmc.getCondVisibility(f"Control.HasFocus({list_id})"):
+            window.clearProperty(f"WidgetInfo.Timer.Complete.{list_id}")
+            break
+        if countdown >= 0:
+            countdown -= 0.25
+            if countdown <= 0:
+                window.setProperty(f"WidgetInfo.Timer.Complete.{list_id}", "true")
+    try:
+        del monitor
         del window
     except:
         pass
