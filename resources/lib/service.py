@@ -37,7 +37,7 @@ class Service(xbmc.Monitor):
     def __init__(self):
         super().__init__()
         self.mdblist_api = MDbListAPI
-        self.blur = ImageBlur
+        self.get_colors = ImageColorAnalyzer
         self.last_set_imdb_id = None
         # self.window = xbmcgui.Window
         self.home_window = xbmcgui.Window(10000)
@@ -48,12 +48,12 @@ class Service(xbmc.Monitor):
         self.last_imdb_id = None
 
     def run(self):
-        image_thread = Thread(target=self.image_monitor)
+        image_thread = Thread(target=self.altus_image_monitor)
         image_thread.start()
         # color_monitor_thread = Thread(target=self.color_monitor)
         # color_monitor_thread.start()
         while not self.abortRequested():
-            self.ratings_monitor()
+            self.altus_ratings_monitor()
             self.waitForAbort(0.2)
 
     def pause_services(self):
@@ -80,7 +80,7 @@ class Service(xbmc.Monitor):
                 self.home_window.clearProperty("pause_services")
                 logger("###Altus: Device is Awake, RESUMING All Services", 1)
 
-    def ratings_monitor(self):
+    def altus_ratings_monitor(self):
         while not self.abortRequested():
             if self.pause_services():
                 self.waitForAbort(2)
@@ -93,7 +93,7 @@ class Service(xbmc.Monitor):
                 self.waitForAbort(10)
                 continue
             if not self.get_visibility(
-                "Window.IsVisible(videos) | Window.IsVisible(home) | Window.IsVisible(11121) | Window.IsActive(movieinformation) | [[Window.IsVisible(videoosd) | Window.IsVisible(seekbar)] + Skin.HasSetting(Enable.DetailedOSD) + !Skin.HasSetting(Disable.OSDRatings)]"
+                "Window.IsVisible(videos) | Window.IsVisible(home) | Window.IsVisible(11121) | Window.IsActive(movieinformation)"
             ):
                 self.waitForAbort(2)
                 continue
@@ -136,10 +136,10 @@ class Service(xbmc.Monitor):
                 self.last_set_imdb_id = imdb_id
                 self.waitForAbort(0.2)
                 continue
-            Thread(target=self.set_ratings, args=(api_key, imdb_id)).start()
+            Thread(target=self.altus_set_ratings, args=(api_key, imdb_id)).start()
             self.waitForAbort(0.2)
 
-    def set_ratings(self, api_key, imdb_id):
+    def altus_set_ratings(self, api_key, imdb_id):
         set_property = self.home_window.setProperty
         result = self.mdblist_api().fetch_info({"imdb_id": imdb_id}, api_key)
         if result:
@@ -147,7 +147,7 @@ class Service(xbmc.Monitor):
             for k, v in result.items():
                 set_property("altus.%s" % k, str(v))
 
-    def image_monitor(self):
+    def altus_image_monitor(self):
         while not self.abortRequested():
             if self.pause_services():
                 self.waitForAbort(2)
@@ -155,13 +155,10 @@ class Service(xbmc.Monitor):
             if self.not_altus():
                 self.waitForAbort(15)
                 continue
-            if self.get_visibility("Skin.HasSetting(Enable.BackgroundBlur)"):
-                radius = self.get_infolabel("Skin.String(BlurRadius)") or "30"
-                saturation = self.get_infolabel("Skin.String(BlurSaturation)") or "1.5"
-                self.blur(radius=radius, saturation=saturation)
-                self.waitForAbort(0.2)
-            else:
-                self.waitForAbort(3)
+            radius = "40"
+            saturation = "1.5"
+            self.get_colors(radius=radius, saturation=saturation)
+            self.waitForAbort(0.2)
 
 
 if __name__ == "__main__":
