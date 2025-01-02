@@ -22,13 +22,14 @@ stacked_media_xml_body = """
       <param name="widget_header" value="{cpath_header}"/>
       <param name="widget_target" value="videos"/>
       <param name="list_id" value="{cpath_list_id}"/>
+      <param name="child_id" value="{cpath_list_id}1"/>
     </include>
     <include content="{cpath_type}">
       <param name="content_path" value="$INFO[Window(Home).Property(altus.{cpath_list_id}.path)]"/>
       <param name="widget_header" value="$INFO[Window(Home).Property(altus.{cpath_list_id}.label)]"/>
       <param name="widget_target" value="videos"/>
       <param name="list_id" value="{cpath_list_id}1"/>
-      <param name="linked_id" value="{cpath_list_id}"/>
+      <param name="parent_id" value="{cpath_list_id}"/>
     </include>"""
 
 history_xml_body = """

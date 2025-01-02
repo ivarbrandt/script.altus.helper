@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import xbmc, xbmcgui
+
 # from modules.logger import logger
 
 
@@ -119,33 +120,27 @@ def widget_monitor(list_id):
     except:
         pass
 
+
 def widget_info_timer(list_id):
     monitor = xbmc.Monitor()
     window = xbmcgui.Window(xbmcgui.getCurrentWindowId())
     try:
         delay = float(xbmc.getInfoLabel("Skin.String(altus_widget_autoinfo_delay)"))
-    except:
+    except (ValueError, TypeError):
         delay = 750
     delay_seconds = delay / 1000
     last_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
     countdown = delay_seconds
     while not monitor.abortRequested():
-        monitor.waitForAbort(0.25)
+        if monitor.waitForAbort(0.25):
+            break
+        if not xbmc.getCondVisibility(f"Control.HasFocus({list_id})"):
+            break
         current_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
         if current_item != last_item:
             last_item = current_item
             countdown = delay_seconds
-            window.clearProperty(f"WidgetInfo.Timer.Complete.{list_id}")
             continue
-        if not xbmc.getCondVisibility(f"Control.HasFocus({list_id})"):
-            window.clearProperty(f"WidgetInfo.Timer.Complete.{list_id}")
-            break
-        if countdown >= 0:
-            countdown -= 0.25
-            if countdown <= 0:
-                window.setProperty(f"WidgetInfo.Timer.Complete.{list_id}", "true")
-    try:
-        del monitor
-        del window
-    except:
-        pass
+        countdown -= 0.25
+        if countdown <= 0:
+            window.setProperty(f"WidgetInfo.Timer.Complete.{list_id}", "true")

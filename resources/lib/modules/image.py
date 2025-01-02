@@ -24,28 +24,31 @@ OLD_LOGO = ""
 
 #################################################################################################
 
+
 class ImageColorAnalyzer:
     def __init__(self, prop="listitem", file=None, radius=None, saturation=None):
         global OLD_IMAGE, OLD_LOGO
-        
+
         # Get background image from blur container - only for color processing
         self.image = xbmc.getInfoLabel("Control.GetLabel(%s)" % BLUR_CONTAINER)
-        
+
         # Get logo with file parameter logic
         self.logo = (
             file
             if file is not None
             else xbmc.getInfoLabel("Control.GetLabel(%s)" % LOGO_CONTAINER)
         )
-        
+
         self.radius = int(radius) if radius is not None else int(BLUR_RADIUS)
         self.saturation = (
             float(saturation) if saturation is not None else float(BLUR_SATURATION)
         )
 
         # Determine if we're in video context
-        self.is_video_context = xbmc.getCondVisibility("Window.IsVisible(fullscreenvideo) | Window.IsVisible(videoosd)")
-        
+        self.is_video_context = xbmc.getCondVisibility(
+            "Window.IsVisible(fullscreenvideo) | Window.IsVisible(videoosd)"
+        )
+
         # Set appropriate property suffix based on context
         self.prop_suffix = "_video" if self.is_video_context else ""
 
@@ -59,23 +62,25 @@ class ImageColorAnalyzer:
                     # Use different property based on context
                     winprop(f"{prop}_clearlogo_cropped{self.prop_suffix}", saved_logo)
         else:
-            if not xbmc.getCondVisibility("Player.HasVideo + [Window.IsVisible(fullscreenvideo) | Window.IsVisible(videoosd)]"):
+            if not xbmc.getCondVisibility(
+                "Player.HasVideo + [Window.IsVisible(fullscreenvideo) | Window.IsVisible(videoosd)]"
+            ):
                 OLD_LOGO = ""
                 # Clear both properties when appropriate
                 winprop(f"{prop}_clearlogo_cropped", "")
                 winprop(f"{prop}_clearlogo_cropped_video", "")
 
         # Original background color processing
-        if xbmc.getCondVisibility('Skin.HasSetting(Enable.Fanart)') and self.image:
+        if xbmc.getCondVisibility("Skin.HasSetting(Enable.Fanart)") and self.image:
             if self.image != OLD_IMAGE:
                 OLD_IMAGE = self.image
-                
+
                 cache_key = md5hash(self.image)
                 colors = self.get_cached_colors(cache_key)
-                
+
                 if colors:
-                    self.avgcolor = colors['avgcolor']
-                    self.textcolor = colors['textcolor']
+                    self.avgcolor = colors["avgcolor"]
+                    self.textcolor = colors["textcolor"]
                 else:
                     img = self.process_image()
                     if img:
@@ -89,7 +94,6 @@ class ImageColorAnalyzer:
                 winprop(prop + "_color", self.avgcolor)
                 winprop(prop + "_textcolor", self.textcolor)
 
-
     def save_cropped_logo(self):
         try:
             # Clean the logo path for consistent hashing
@@ -97,7 +101,7 @@ class ImageColorAnalyzer:
             if cleaned_path.endswith("/"):
                 cleaned_path = cleaned_path[:-1]
             cleaned_path = url_unquote(cleaned_path)
-            
+
             # Create consistent filename
             filename = f"logo_{md5hash(cleaned_path)}.png"
             targetfile = os.path.join(ADDON_DATA_IMG_PATH, filename)
@@ -110,13 +114,13 @@ class ImageColorAnalyzer:
             if not img:
                 return None
 
-            img = img.convert('RGBA')
+            img = img.convert("RGBA")
             bbox = img.getbbox()
             if not bbox:
                 return None
-            
+
             img = img.crop(bbox)
-            
+
             # Resize if needed
             width, height = img.size
             MAX_WIDTH = 400
@@ -127,8 +131,8 @@ class ImageColorAnalyzer:
                 img = img.resize((new_width, new_height), Image.LANCZOS)
 
             # Quantize to reduce number of colors while maintaining transparency
-            img = img.quantize(colors=256, method=2, kmeans=1).convert('RGBA')
-            
+            img = img.quantize(colors=256, method=2, kmeans=1).convert("RGBA")
+
             img.save(targetfile, "PNG", optimize=True)
             return targetfile
 
@@ -139,7 +143,7 @@ class ImageColorAnalyzer:
     def get_cached_colors(self, cache_key):
         try:
             if os.path.exists(COLOR_CACHE_FILE):
-                with open(COLOR_CACHE_FILE, 'r') as f:
+                with open(COLOR_CACHE_FILE, "r") as f:
                     cache = json.load(f)
                     return cache.get(cache_key)
         except Exception as e:
@@ -150,29 +154,31 @@ class ImageColorAnalyzer:
         try:
             cache = {}
             if os.path.exists(COLOR_CACHE_FILE):
-                with open(COLOR_CACHE_FILE, 'r') as f:
+                with open(COLOR_CACHE_FILE, "r") as f:
                     try:
                         cache = json.load(f)
                     except json.JSONDecodeError:
                         pass
 
             cache[cache_key] = {
-                'avgcolor': self.avgcolor,
-                'textcolor': self.textcolor,
+                "avgcolor": self.avgcolor,
+                "textcolor": self.textcolor,
             }
 
             cache_dir = os.path.dirname(COLOR_CACHE_FILE)
             if not os.path.exists(cache_dir):
                 os.makedirs(cache_dir)
-            
-            with open(COLOR_CACHE_FILE, 'w') as f:
+
+            with open(COLOR_CACHE_FILE, "w") as f:
                 json.dump(cache, f, indent=2)
         except Exception as e:
             xbmc.log(f"Error saving to color cache: {str(e)}", 2)
 
     def process_image(self):
         try:
-            filename = md5hash(self.image) + str(self.radius) + str(self.saturation) + ".png"
+            filename = (
+                md5hash(self.image) + str(self.radius) + str(self.saturation) + ".png"
+            )
             img = _openimage(self.image, ADDON_DATA_IMG_PATH, filename)
             if img:
                 img.thumbnail((200, 200), Image.LANCZOS)
@@ -256,16 +262,18 @@ class ImageColorAnalyzer:
 
         def get_best_text_color(bg_color):
             bg_luminance = get_luminance(bg_color[0], bg_color[1], bg_color[2])
-            
+
             white = (255, 255, 255)
             dark = (20, 21, 21)  # FF141515
-            
+
             white_contrast = get_contrast_ratio(get_luminance(*white), bg_luminance)
             dark_contrast = get_contrast_ratio(get_luminance(*dark), bg_luminance)
-            
+
             # Bias towards white text (lower number equals higher bias)
-            if white_contrast >= dark_contrast * 0.42:  # Adjust this factor to fine-tune
-                return "FFE0E0E8"
+            if (
+                white_contrast >= dark_contrast * 0.52
+            ):  # Adjust this factor to fine-tune
+                return "FFFFFFFF"
             else:
                 return "FF141515"
 
@@ -273,10 +281,10 @@ class ImageColorAnalyzer:
             if img:
                 # Resize image for faster processing
                 img_resize = img.resize((50, 50))
-                
+
                 # Convert image to RGB mode if it's not
-                if img_resize.mode != 'RGB':
-                    img_resize = img_resize.convert('RGB')
+                if img_resize.mode != "RGB":
+                    img_resize = img_resize.convert("RGB")
 
                 # Get all pixels
                 pixels = list(img_resize.getdata())
@@ -285,7 +293,7 @@ class ImageColorAnalyzer:
                 color_bins = {}
                 for pixel in pixels:
                     # Simplify RGB values to reduce color space
-                    simple_color = (pixel[0]//10, pixel[1]//10, pixel[2]//10)
+                    simple_color = (pixel[0] // 10, pixel[1] // 10, pixel[2] // 10)
                     if simple_color in color_bins:
                         color_bins[simple_color] += 1
                     else:
@@ -293,7 +301,7 @@ class ImageColorAnalyzer:
 
                 # Find the most common color
                 dominant_color = max(color_bins, key=color_bins.get)
-                
+
                 # Scale the color back up
                 r, g, b = [x * 10 for x in dominant_color]
 
@@ -321,6 +329,7 @@ class ImageColorAnalyzer:
 
 """ get cached images or copy to temp if file has not been cached yet
 """
+
 
 def _openimage(image, targetpath, filename):
     # some paths require unquoting to get a valid cached thumb hash
