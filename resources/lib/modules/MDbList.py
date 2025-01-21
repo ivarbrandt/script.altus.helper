@@ -17,13 +17,16 @@ ratings_database_path = xbmcvfs.translatePath(
 IMAGE_PATH = "special://home/addons/skin.altus/resources/rating_images/"
 TMDB_API_KEY = "66a9a671e472b4dc34549c067deff536"
 
+
 def make_session(url="https://"):
     session = requests.Session()
     session.mount(url, requests.adapters.HTTPAdapter(pool_maxsize=100))
     return session
 
+
 api_url = "https://mdblist.com/api/?apikey=%s&i=%s"
 session = make_session("https://www.mdblist.com/")
+
 
 class TMDbLookup:
     def __init__(self):
@@ -55,7 +58,7 @@ class TMDbLookup:
             "api_key": self.api_key,
             "query": title,
             "language": "en-US",
-            "page": 1
+            "page": 1,
         }
         if year:
             params["year"] = year
@@ -76,11 +79,20 @@ class TMDbLookup:
             tmdb_id = str(result.get("id"))
             if not tmdb_id:
                 continue
-            result_title = result.get("name" if "name" in result else "title", "").lower().strip()
+            result_title = (
+                result.get("name" if "name" in result else "title", "").lower().strip()
+            )
             score = SequenceMatcher(None, title, result_title).ratio()
             if year:
                 try:
-                    result_date = result.get("first_air_date" if "first_air_date" in result else "release_date", "")
+                    result_date = result.get(
+                        (
+                            "first_air_date"
+                            if "first_air_date" in result
+                            else "release_date"
+                        ),
+                        "",
+                    )
                     result_year = int(result_date[:4]) if result_date else None
                     if result_year and result_year == year:
                         score += 0.3
@@ -99,19 +111,23 @@ class TMDbLookup:
     def _get_external_ids(self, tmdb_id, media_type):
         params = {"api_key": self.api_key}
         try:
-            response = self.session.get(f"{self.base_url}/{media_type}/{tmdb_id}/external_ids", params=params)
+            response = self.session.get(
+                f"{self.base_url}/{media_type}/{tmdb_id}/external_ids", params=params
+            )
             if response.status_code == 200:
                 return response.json().get("imdb_id")
         except requests.RequestException:
             pass
         return None
 
+
 class MDbListAPI:
     last_checked_imdb_id = None
+
     def __init__(self):
         self.connect_database()
         self.tmdb_lookup = TMDbLookup()
-        
+
     def connect_database(self):
         if not xbmcvfs.exists(settings_path):
             xbmcvfs.mkdir(settings_path)
@@ -150,8 +166,10 @@ class MDbListAPI:
         return datetime_object
 
     def insert_or_update_ratings(self, primary_id, result):
-        imdb_id = result.get('imdbid', primary_id if primary_id.startswith('tt') else None)
-        tmdb_id = result.get('tmdbid', primary_id if primary_id.isdigit() else None)
+        imdb_id = result.get(
+            "imdbid", primary_id if primary_id.startswith("tt") else None
+        )
+        tmdb_id = result.get("tmdbid", primary_id if primary_id.isdigit() else None)
         if not imdb_id and not tmdb_id:
             return
         ratings_data = json.dumps(result)
@@ -164,8 +182,28 @@ class MDbListAPI:
         )
         self.dbcon.commit()
 
+    # def delete_all_ratings(self):
+    #     self.dbcur.execute("DELETE FROM ratings")
+    #     self.dbcon.commit()
+    #     dialog = xbmcgui.Dialog()
+    #     dialog.ok("Altus", "All ratings have been cleared from the database.")
+
     def delete_all_ratings(self):
-        self.dbcur.execute("DELETE FROM ratings")
+        self.dbcur.execute("DROP TABLE IF EXISTS ratings")
+        self.dbcon.commit()
+
+        # Recreate the table with new schema
+        self.dbcon.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ratings (
+                imdb_id TEXT,
+                tmdb_id TEXT,
+                ratings TEXT,
+                last_updated TIMESTAMP,
+                PRIMARY KEY (imdb_id, tmdb_id)
+            );
+            """
+        )
         self.dbcon.commit()
         dialog = xbmcgui.Dialog()
         dialog.ok("Altus", "All ratings have been cleared from the database.")
@@ -192,35 +230,38 @@ class MDbListAPI:
     def get_cached_ids(self, title, year, media_type):
         self.dbcur.execute(
             "SELECT imdb_id, tmdb_id FROM id_mappings WHERE title=? AND year=? AND media_type=?",
-            (title, year, media_type)
+            (title, year, media_type),
         )
         result = self.dbcur.fetchone()
         return result if result else (None, None)
 
     def cache_ids(self, title, year, media_type, imdb_id, tmdb_id):
         year = "" if year is None else year
-        self.dbcur.execute("""
+        self.dbcur.execute(
+            """
             INSERT OR REPLACE INTO id_mappings 
             (title, year, media_type, imdb_id, tmdb_id, last_updated)
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, (title, year, media_type, imdb_id, tmdb_id))
+        """,
+            (title, year, media_type, imdb_id, tmdb_id),
+        )
         self.dbcon.commit()
 
     def _clean_tv_title(self, title):
         # TODO Add other patterns
-        cleaned_title = re.sub(r'\s+season\s+\d+.*$', '', title, flags=re.IGNORECASE)
+        cleaned_title = re.sub(r"\s+season\s+\d+.*$", "", title, flags=re.IGNORECASE)
         return cleaned_title.strip()
 
     def lookup_imdb_id(self, meta):
-        title = meta.get('title')
-        premiered = meta.get('premiered')
-        media_type = meta.get('media_type', 'movie')
-        if media_type == 'tv':
+        title = meta.get("title")
+        premiered = meta.get("premiered")
+        media_type = meta.get("media_type", "movie")
+        if media_type == "tv":
             title = self._clean_tv_title(title)
         year = None
         if premiered:
-            if '/' in premiered:
-                parts = premiered.split('/')
+            if "/" in premiered:
+                parts = premiered.split("/")
                 year = parts[2] if len(parts) == 3 and parts[2].isdigit() else None
             else:
                 year = premiered[:4] if premiered else None
@@ -228,9 +269,7 @@ class MDbListAPI:
         if cached_imdb_id:
             return cached_imdb_id
         found_imdb_id, found_tmdb_id = self.tmdb_lookup.search_by_info(
-            title, 
-            premiered, 
-            media_type
+            title, premiered, media_type
         )
         if found_imdb_id or found_tmdb_id:
             self.cache_ids(title, year, media_type, found_imdb_id, found_tmdb_id)
@@ -240,7 +279,7 @@ class MDbListAPI:
         imdb_id = meta.get("imdb_id")
         tmdb_id = meta.get("tmdb_id")
         media_type = meta.get("media_type", "movie")
-        if imdb_id and imdb_id.startswith('tt'):
+        if imdb_id and imdb_id.startswith("tt"):
             cached_data = self.get_cached_info(imdb_id)
             if cached_data:
                 return cached_data
@@ -258,7 +297,7 @@ class MDbListAPI:
             return result
         return {}
 
-    def get_result(self, id_with_type, api_key, media_type='movie'):
+    def get_result(self, id_with_type, api_key, media_type="movie"):
         try:
             if isinstance(id_with_type, str) and id_with_type.isdigit():
                 url = f"https://mdblist.com/api/?apikey={api_key}&tm={id_with_type}&m={'show' if media_type == 'tv' else 'movie'}"
@@ -270,16 +309,21 @@ class MDbListAPI:
             json_data = response.json()
             ratings = json_data.get("ratings", [])
             data = {}
-            data['imdbid'] = json_data.get('imdbid')
-            data['tmdbid'] = json_data.get('tmdbid')
+            data["imdbid"] = json_data.get("imdbid")
+            data["tmdbid"] = json_data.get("tmdbid")
             released_digital = json_data.get("released_digital")
             try:
-                recent_days = int(xbmc.getInfoLabel('Skin.String(altus_digital_release_window)') or "3")
+                recent_days = int(
+                    xbmc.getInfoLabel("Skin.String(altus_digital_release_window)")
+                    or "3"
+                )
             except ValueError:
                 recent_days = 3
             if released_digital:
                 try:
-                    release_date = self.datetime_workaround(released_digital, "%Y-%m-%d")
+                    release_date = self.datetime_workaround(
+                        released_digital, "%Y-%m-%d"
+                    )
                     current_date = datetime.now()
                     data["digital_release_date"] = release_date.strftime("%m/%d/%Y")
                     if release_date <= current_date:
@@ -396,7 +440,7 @@ class MDbListAPI:
                     else:
                         data["tmdbRating"] = ""
                         data["tmdbImage"] = ""
-                        
+
             trailer = json_data.get("trailer", "")
             if not trailer:
                 trailer = ""
