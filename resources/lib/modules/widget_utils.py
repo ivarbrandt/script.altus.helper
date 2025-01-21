@@ -144,3 +144,27 @@ def widget_info_timer(list_id):
         countdown -= 0.25
         if countdown <= 0:
             window.setProperty(f"WidgetInfo.Timer.Complete.{list_id}", "true")
+
+
+def spotlight_timer(list_id):
+    monitor = xbmc.Monitor()
+    try:
+        delay = float(xbmc.getInfoLabel("Skin.String(altus_spotlight_delay)"))
+    except (ValueError, TypeError):
+        delay = 10
+    last_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
+    countdown = delay
+    while not monitor.abortRequested():
+        if monitor.waitForAbort(0.25):
+            break
+        if not xbmc.getCondVisibility(f"Control.HasFocus({list_id})"):
+            break
+        current_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
+        if current_item != last_item:
+            last_item = current_item
+            countdown = delay
+            continue
+        countdown -= 0.25
+        if countdown <= 0:
+            xbmc.executebuiltin('Action(right)')
+
