@@ -20,6 +20,11 @@ def routing():
 
         return widget_info_timer(_get("list_id"))
 
+    if mode == "spotlight_timer":
+        from modules.widget_utils import spotlight_timer
+
+        return spotlight_timer(_get("list_id"))
+
     if "actions" in mode:
         from modules import actions
 
@@ -79,6 +84,11 @@ def routing():
         from modules.MDbList import set_api_key
 
         return set_api_key()
+    
+    if mode == "select_view":
+        from modules.select_view import select_view
+
+        return select_view()
 
     if mode == "delete_all_ratings":
         from modules.MDbList import MDbListAPI
