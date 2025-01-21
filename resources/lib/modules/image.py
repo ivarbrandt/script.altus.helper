@@ -63,7 +63,7 @@ class ImageColorAnalyzer:
                     winprop(f"{prop}_clearlogo_cropped{self.prop_suffix}", saved_logo)
         else:
             if not xbmc.getCondVisibility(
-                "Player.HasVideo + [Window.IsVisible(fullscreenvideo) | Window.IsVisible(videoosd)]"
+                "Player.HasVideo"
             ):
                 OLD_LOGO = ""
                 # Clear both properties when appropriate
