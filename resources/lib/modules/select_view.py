@@ -28,7 +28,7 @@ MOVIE_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'Li
 TVSHOW_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'ListInfo', 'Wall', 'LandscapeWall']
 SEASON_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'ListInfo', 'Season', 'Wall', 'LandscapeWall']
 EPISODE_VIEWS = ['List', 'PosterFlow', 'Slide', 'LandscapeInfo', 'ListInfo', 'LandscapeWall']
-EPISODELIST_VIEWS = ['List', 'LandscapeInfo', 'ListInfo', 'LandscapeWall']
+EPISODE_LIST_VIEWS = ['List', 'LandscapeInfo', 'ListInfo', 'LandscapeWall']
 ADDON_VIEWS = ['List', 'ListInfo']
 FAVOURITES_VIEWS = ['List', 'IconWall', 'ListInfo']
 MENU_VIEWS = ['List', 'IconWall', 'ListInfo']
@@ -39,7 +39,7 @@ VIEWS = {
     'tvshows': [make_view(view, 'tvshows') for view in TVSHOW_VIEWS],
     'seasons': [make_view(view, 'seasons') for view in SEASON_VIEWS],
     'episodes.outside': [make_view(view, 'episodes') for view in EPISODE_VIEWS],
-    'episodes.inside': [make_view(view, 'episodes') for view in EPISODELIST_VIEWS],
+    'episodes.inside': [make_view(view, 'episodes') for view in EPISODE_LIST_VIEWS],
     'addons': [make_view(view, 'addons') for view in ADDON_VIEWS],
     'favourites': [make_view(view, 'favourites') for view in FAVOURITES_VIEWS],
     '': [make_view(view, 'menu') for view in MENU_VIEWS],  # Empty content type for menus
