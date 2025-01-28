@@ -1,6 +1,8 @@
 import sqlite3
+import datetime as dt
 from datetime import datetime, timedelta
 import json
+import time
 from typing import Optional, Tuple, Dict, Any
 from ..config import RATINGS_DATABASE_PATH, CACHE_DURATION_DAYS
 import xbmcgui, xbmcvfs
@@ -39,6 +41,13 @@ class RatingsDatabase:
             """
             )
 
+    def datetime_workaround(self, data, str_format):
+        try:
+            datetime_object = dt.datetime.strptime(data, str_format)
+        except:
+            datetime_object = dt.datetime(*(time.strptime(data, str_format)[0:6]))
+        return datetime_object
+
     def get_cached_ratings(self, id_to_check: str) -> Optional[Dict[str, Any]]:
         """Get cached ratings if they exist and are not expired."""
         with sqlite3.connect(self.db_path, timeout=60) as conn:
@@ -54,10 +63,10 @@ class RatingsDatabase:
 
             if result:
                 ratings_data, last_updated = result
-                last_updated_date = datetime.strptime(
+                last_updated_date = self.datetime_workaround(
                     last_updated, "%Y-%m-%d %H:%M:%S.%f"
                 )
-                if datetime.now() - last_updated_date < timedelta(
+                if dt.datetime.now() - last_updated_date < dt.timedelta(
                     days=CACHE_DURATION_DAYS
                 ):
                     return json.loads(ratings_data)

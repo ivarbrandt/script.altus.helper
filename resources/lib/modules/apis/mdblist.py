@@ -1,5 +1,7 @@
 import xbmc
 import requests
+import datetime as dt
+import time
 from datetime import datetime
 from typing import Dict, Any
 from .base import BaseAPIClient
@@ -12,6 +14,13 @@ class MDbListClient(BaseAPIClient):
         super().__init__(API_URLS["mdblist"])
         self.api_key = api_key
         self.database = database
+
+    def datetime_workaround(self, data, str_format):
+        try:
+            datetime_object = dt.datetime.strptime(data, str_format)
+        except:
+            datetime_object = dt.datetime(*(time.strptime(data, str_format)[0:6]))
+        return datetime_object
 
     def get_ratings_from_api(
         self, id_with_type: str, media_type: str = "movie"
@@ -56,16 +65,18 @@ class MDbListClient(BaseAPIClient):
                 )
                 expired_days = int(
                     xbmc.getInfoLabel("Skin.String(altus_digital_expired_window)")
-                    or "14"
+                    or "21"
                 )
             except ValueError:
                 recent_days = 7
-                expired_days = 14
+                expired_days = 21
 
             if released_digital:
                 try:
-                    release_date = datetime.strptime(released_digital, "%Y-%m-%d")
-                    current_date = datetime.now()
+                    release_date = self.datetime_workaround(
+                        released_digital, "%Y-%m-%d"
+                    )
+                    current_date = dt.datetime.now()
                     data["digital_release_date"] = release_date.strftime("%m/%d/%Y")
                     if release_date <= current_date:
                         days_since_release = (current_date - release_date).days

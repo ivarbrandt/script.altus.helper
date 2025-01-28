@@ -1,16 +1,22 @@
 import xbmcvfs
 from typing import Dict, Any
 
-SETTINGS_PATH = xbmcvfs.translatePath("special://profile/addon_data/script.altus.helper/")
-RATINGS_DATABASE_PATH = xbmcvfs.translatePath("special://profile/addon_data/script.altus.helper/ratings_cache.db")
+SETTINGS_PATH = xbmcvfs.translatePath(
+    "special://profile/addon_data/script.altus.helper/"
+)
+RATINGS_DATABASE_PATH = xbmcvfs.translatePath(
+    "special://profile/addon_data/script.altus.helper/ratings_cache.db"
+)
 RATINGS_IMAGE_PATH = "special://home/addons/skin.altus/resources/rating_images/"
-PROFILE_PATH = xbmcvfs.translatePath("special://userdata/addon_data/script.altus.helper/current_profile.json")
+PROFILE_PATH = xbmcvfs.translatePath(
+    "special://userdata/addon_data/script.altus.helper/current_profile.json"
+)
 
 TMDB_API_KEY = "66a9a671e472b4dc34549c067deff536"
 
 API_URLS = {
     "mdblist": "https://mdblist.com/api/",
-    "tmdb": "https://api.themoviedb.org/3"
+    "tmdb": "https://api.themoviedb.org/3",
 }
 
 EMPTY_RATINGS: Dict[str, str] = {
@@ -40,5 +46,5 @@ EMPTY_RATINGS: Dict[str, str] = {
 }
 
 CACHE_DURATION_DAYS = 3
-DEFAULT_DIGITAL_RELEASE_WINDOW = 3
+DEFAULT_DIGITAL_RELEASE_WINDOW = 7
 VIDEO_ID_PATTERN = r"v=([a-zA-Z0-9_-]+)"
