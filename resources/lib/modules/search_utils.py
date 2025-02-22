@@ -9,11 +9,11 @@ from modules.cpath_maker import starting_widgets
 
 # from modules.logger import logger
 
-settings_path = xbmcvfs.translatePath(
+SETTINGS_PATH = xbmcvfs.translatePath(
     "special://profile/addon_data/script.altus.helper/"
 )
 
-spath_database_path = xbmcvfs.translatePath(
+SEARCH_DATABASE_PATH = xbmcvfs.translatePath(
     "special://profile/addon_data/script.altus.helper/spath_cache.db"
 )
 
@@ -36,9 +36,9 @@ class SPaths:
         self.refresh_spaths = False
 
     def connect_database(self):
-        if not xbmcvfs.exists(settings_path):
-            xbmcvfs.mkdir(settings_path)
-        self.dbcon = database.connect(spath_database_path, timeout=20)
+        if not xbmcvfs.exists(SETTINGS_PATH):
+            xbmcvfs.mkdir(SETTINGS_PATH)
+        self.dbcon = database.connect(SEARCH_DATABASE_PATH, timeout=20)
         self.dbcon.execute(
             "CREATE TABLE IF NOT EXISTS spath (spath_id INTEGER PRIMARY KEY AUTOINCREMENT, spath text)"
         )

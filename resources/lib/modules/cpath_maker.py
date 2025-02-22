@@ -4,6 +4,7 @@ import json
 import sqlite3 as database
 from threading import Thread
 from modules import xmls
+import time
 
 # from modules.logger import logger
 
@@ -82,18 +83,20 @@ main_include_dict = {
 widget_types = (
     ("Spotlight", "WidgetListSpotlight"),
     ("Feature Poster", "FeatureWidgetListPoster"),
+    ("Feature Landscape", "FeatureWidgetListLandscape"),
     ("Poster", "WidgetListPoster"),
-    ("Small Poster", "SmallWidgetListPoster"),
     ("Landscape", "WidgetListLandscape"),
+    ("Small Poster", "SmallWidgetListPoster"),
     ("Small Landscape", "SmallWidgetListLandscape"),
     ("Category", "WidgetListCategory"),
 )
 stacked_widget_types = (
     ("Spotlight", "WidgetListSpotlight"),
     ("Feature Poster", "FeatureWidgetListPoster"),
+    ("Feature Landscape", "FeatureWidgetListLandscape"),
     ("Poster", "WidgetListPoster"),
-    ("Small Poster", "SmallWidgetListPoster"),
     ("Landscape", "WidgetListLandscape"),
+    ("Small Poster", "SmallWidgetListPoster"),
     ("Small Landscape", "SmallWidgetListLandscape"),
 )
 default_path = "addons://sources/video"
@@ -427,7 +430,7 @@ class CPaths:
     #     return widget_types[choice]
 
     def widget_type(
-        self, label="Choose widget display type", type_limit=7, types=widget_types
+        self, label="Choose widget display type", type_limit=8, types=widget_types
     ):
         choice = dialog.select(label, [i[0] for i in types[0:type_limit]])
         if choice == -1:
@@ -753,21 +756,44 @@ def remake_all_cpaths(silent=False):
         xbmcgui.Dialog().ok("Altus", "Menus and widgets remade")
 
 
-def starting_widgets():
+def starting_widgets(section=None):
+    """
+    Load stacked widgets with section-specific initialization tracking.
+    Args:
+        section (str, optional): Specific section to load. If None, checks all sections.
+    """
+    start_time = time.time()
     window = xbmcgui.Window(10000)
-    window.setProperty("altus.starting_widgets", "finished")
-    for item in (
-        "movie.widget",
-        "tvshow.widget",
-        "custom1.widget",
-        "custom2.widget",
-        "custom3.widget",
-    ):
+    section_settings = {
+        "movie": "HomeMenuNoMoviesButton",
+        "tvshow": "HomeMenuNoTVShowsButton",
+        "custom1": "HomeMenuNoCustom1Button",
+        "custom2": "HomeMenuNoCustom2Button",
+        "custom3": "HomeMenuNoCustom3Button"
+    }
+    if not section:
+        window.setProperty("altus.starting_widgets", "true")
+    sections_to_process = []
+    if section:
+        if not xbmc.getCondVisibility(f"Skin.HasSetting({section_settings.get(section, '')})"):
+            sections_to_process = [(section, f"{section}.widget")]
+    else:
+        sections_to_process = [
+            (sec, f"{sec}.widget") 
+            for sec in section_settings.keys() 
+            if not xbmc.getCondVisibility(f"Skin.HasSetting({section_settings[sec]})")
+        ]
+    found_stacked_widgets = False
+    for section_key, widget_key in sections_to_process:
         try:
-            active_cpaths = CPaths(item).fetch_current_cpaths()
+            active_cpaths = CPaths(widget_key).fetch_current_cpaths()
             if not active_cpaths:
                 continue
-            widget_type = item.split(".")[0]
+            has_stacked = any("Stacked" in widget.get("cpath_label", "") 
+                            for widget in active_cpaths.values())
+            if has_stacked and not found_stacked_widgets:
+                found_stacked_widgets = True
+                window.setProperty("altus.widgets_load_state", "processing")
             widget_type_id = {
                 "movie": 19010,
                 "tvshow": 22010,
@@ -775,7 +801,7 @@ def starting_widgets():
                 "custom2": 24010,
                 "custom3": 25010,
             }
-            base_list_id = widget_type_id.get(widget_type)
+            base_list_id = widget_type_id.get(section_key)
             for count in range(1, 51):
                 active_widget = active_cpaths.get(count, {})
                 if not active_widget:
@@ -800,10 +826,72 @@ def starting_widgets():
                 window.setProperty("altus.%s.path" % list_id, cpath_path)
         except:
             pass
+    if found_stacked_widgets:
+        end_time = time.time()
+        execution_time = end_time - start_time
+        load_time_seconds = round(execution_time)
+        window.setProperty("altus.widgets_load_time", str(load_time_seconds))
+        window.setProperty("altus.widgets_load_state", "finished")
+        xbmc.Monitor().waitForAbort(3)
+        window.clearProperty("altus.widgets_load_state")
+        window.clearProperty("altus.widgets_load_time")
     try:
         del window
     except:
         pass
+
+
+# def starting_widgets():
+#     window = xbmcgui.Window(10000)
+#     window.setProperty("altus.starting_widgets", "finished")
+#     for item in (
+#         "movie.widget",
+#         "tvshow.widget",
+#         "custom1.widget",
+#         "custom2.widget",
+#         "custom3.widget",
+#     ):
+#         try:
+#             active_cpaths = CPaths(item).fetch_current_cpaths()
+#             if not active_cpaths:
+#                 continue
+#             widget_type = item.split(".")[0]
+#             widget_type_id = {
+#                 "movie": 19010,
+#                 "tvshow": 22010,
+#                 "custom1": 23010,
+#                 "custom2": 24010,
+#                 "custom3": 25010,
+#             }
+#             base_list_id = widget_type_id.get(widget_type)
+#             for count in range(1, 51):
+#                 active_widget = active_cpaths.get(count, {})
+#                 if not active_widget:
+#                     continue
+#                 if not "Stacked" in active_widget["cpath_label"]:
+#                     continue
+#                 cpath_setting = active_widget["cpath_setting"]
+#                 if not cpath_setting:
+#                     continue
+#                 try:
+#                     list_id = base_list_id + int(cpath_setting.split(".")[2])
+#                 except:
+#                     continue
+#                 try:
+#                     first_item = files_get_directory(active_widget["cpath_path"])[0]
+#                 except:
+#                     continue
+#                 if not first_item:
+#                     continue
+#                 cpath_label, cpath_path = first_item["label"], first_item["file"]
+#                 window.setProperty("altus.%s.label" % list_id, cpath_label)
+#                 window.setProperty("altus.%s.path" % list_id, cpath_path)
+#         except:
+#             pass
+#     try:
+#         del window
+#     except:
+#         pass
 
 
 def show_busy_dialog():

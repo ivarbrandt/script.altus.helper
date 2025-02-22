@@ -5,7 +5,8 @@ import json
 import time
 from typing import Optional, Tuple, Dict, Any
 from ..config import RATINGS_DATABASE_PATH, CACHE_DURATION_DAYS
-import xbmcgui, xbmcvfs
+from ..helper import calculate_cache_size
+import xbmc, xbmcgui
 
 
 class RatingsDatabase:
@@ -150,24 +151,46 @@ class RatingsDatabase:
     #     dialog = xbmcgui.Dialog()
     #     dialog.ok("Altus", "All ratings have been cleared from the database.")
 
+    # def delete_all_ratings(self):
+    #     dialog = xbmcgui.Dialog()
+    #     if dialog.yesno("Altus", "Are you sure you want to clear all ratings?"):
+    #         try:
+    #             with sqlite3.connect(self.db_path, timeout=60) as conn:
+    #                 cursor = conn.cursor()
+    #                 cursor.execute("DELETE FROM ratings")
+    #                 cursor.execute("VACUUM")
+    #             dialog.ok("Altus", "All ratings have been cleared from the database.")
+    #             calculate_cache_size()
+    #         except Exception as e:
+    #             xbmc.log(f"Error clearing ratings database: {str(e)}", 2)
+    #             dialog.notification("Altus", "Error clearing ratings", xbmcgui.NOTIFICATION_ERROR)
+
     def delete_all_ratings(self):
-        with sqlite3.connect(self.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute("DROP TABLE IF EXISTS ratings")
-            # Recreate the table with new schema
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS ratings (
-                    imdb_id TEXT,
-                    tmdb_id TEXT,
-                    ratings TEXT,
-                    last_updated TIMESTAMP,
-                    PRIMARY KEY (imdb_id, tmdb_id)
-                );
-                """
-            )
-            dialog = xbmcgui.Dialog()
-            dialog.ok("Altus", "All ratings have been cleared from the database.")
+        dialog = xbmcgui.Dialog()
+        if dialog.yesno("Altus", "Are you sure you want to clear all ratings?"):
+            try:
+                with sqlite3.connect(self.db_path, timeout=60) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("DROP TABLE IF EXISTS ratings")
+                    # Recreate the table with new schema
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS ratings (
+                            imdb_id TEXT,
+                            tmdb_id TEXT,
+                            ratings TEXT,
+                            last_updated TIMESTAMP,
+                            PRIMARY KEY (imdb_id, tmdb_id)
+                        );
+                        """
+                    )
+                    cursor.execute("VACUUM")
+                    dialog.ok("Altus", "All ratings have been cleared from the database.")
+                    # Update cache size after clearing
+                    calculate_cache_size()
+            except Exception as e:
+                xbmc.log(f"Error clearing ratings database: {str(e)}", 2)
+                dialog.notification("Altus", "Error clearing ratings", xbmcgui.NOTIFICATION_ERROR)
 
 
 # import sqlite3 as database

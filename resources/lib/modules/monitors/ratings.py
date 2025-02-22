@@ -29,7 +29,7 @@ class RatingsMonitor:
         """Process the current media item."""
         meta = self._get_current_item_meta()
         if not meta:
-            self._clear_ratings_properties()
+            # self._clear_ratings_properties()
             return
 
         media_id = meta.get("id")
@@ -150,6 +150,13 @@ class RatingsMonitor:
     def _get_current_item_meta(self) -> Optional[Dict[str, Any]]:
         """Get metadata for the current item."""
         dbtype = self.get_infolabel("ListItem.DBTYPE").lower()
+        # New logic to handle DBType property
+        if dbtype in ["movie", "tvshow"]:
+            self.home_window.setProperty("CurrentDBType", dbtype)
+        else:
+            # Only clear if context menu is not visible
+            if not xbmc.getCondVisibility("Window.IsVisible(contextmenu) | Window.IsVisible(movieinformation)"):
+                self.home_window.clearProperty("CurrentDBType")
         if not dbtype in ["movie", "tvshow", "episode", "season"]:
             return None
 
