@@ -32,6 +32,7 @@ class ImageMonitor(threading.Thread):
     ):
         super().__init__()
         self.analyzer_class = analyzer_class
+        self.last_blur_diffuse = None
         self.config = config or ImageAnalysisConfig()
         self._stop_event = threading.Event()
         self.daemon = True
@@ -48,6 +49,10 @@ class ImageMonitor(threading.Thread):
                     xbmc.Monitor().waitForAbort(15)
                     continue
                 current_config = ImageAnalysisConfig.from_skin_settings()
+                current_blur_diffuse = xbmc.getInfoLabel("$VAR[MainBlurDiffuse]")
+                if current_config.background_setting == "2" and current_blur_diffuse != self.last_blur_diffuse:
+                    xbmc.executebuiltin(f"SetProperty(LastMainBlurDiffuse,{current_blur_diffuse},home)")
+                    self.last_blur_diffuse = current_blur_diffuse
                 if current_config.background_setting in ["0", "1", "2"]:
                     analyzer_params = {}
                     if current_config.background_setting in ["1", "2"]:

@@ -150,14 +150,14 @@ class RatingsMonitor:
     def _get_current_item_meta(self) -> Optional[Dict[str, Any]]:
         """Get metadata for the current item."""
         dbtype = self.get_infolabel("ListItem.DBTYPE").lower()
-        # New logic to handle DBType property
+        path = self.get_infolabel("ListItem.Path")
         if dbtype in ["movie", "tvshow"]:
             self.home_window.setProperty("CurrentDBType", dbtype)
         else:
-            # Only clear if context menu is not visible
             if not xbmc.getCondVisibility("Window.IsVisible(contextmenu) | Window.IsVisible(movieinformation)"):
                 self.home_window.clearProperty("CurrentDBType")
-        if not dbtype in ["movie", "tvshow", "episode", "season"]:
+        if not (dbtype in ["movie", "tvshow", "episode", "season"] or 
+            path.startswith("plugin://plugin.video.mediafusion")):
             return None
 
         # Try direct ID lookup first

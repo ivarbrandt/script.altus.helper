@@ -85,18 +85,20 @@ class ImageColorAnalyzer:
                                 f"{prop}_logo_color_alt{self.prop_suffix}", "FFCCCCCC"
                             )
         else:
-            if xbmc.getCondVisibility("!Player.HasVideo + ControlGroup(2000).HasFocus"):
-                OLD_LOGO = ""
-                for suffix in ["", "_video"]:
-                    for prop_type in [
-                        "clearlogo_cropped",
-                        "logo_color",
-                        "logo_text_color",
-                        "logo_color_alt",
-                    ]:
-                        winprop(f"{prop}_{prop_type}{suffix}", "")
-            elif not xbmc.getCondVisibility("Player.HasVideo"):
-                OLD_LOGO = ""
+            windows_not_visible = xbmc.getCondVisibility("String.IsEmpty(ListItem.Art(clearlogo)) + ![Window.IsVisible(contextmenu) | Window.IsVisible(movieinformation)]")
+            if windows_not_visible:
+                if xbmc.getCondVisibility("!Player.HasVideo + [ControlGroup(2000).HasFocus | Window.IsVisible(videos)]"):
+                    OLD_LOGO = ""
+                    for suffix in ["", "_video"]:
+                        for prop_type in [
+                            "clearlogo_cropped",
+                            "logo_color",
+                            "logo_text_color",
+                            "logo_color_alt",
+                        ]:
+                            winprop(f"{prop}_{prop_type}{suffix}", "")
+                elif not xbmc.getCondVisibility("Player.HasVideo"):
+                    OLD_LOGO = ""
 
     def _process_background(self, prop):
         global OLD_IMAGE

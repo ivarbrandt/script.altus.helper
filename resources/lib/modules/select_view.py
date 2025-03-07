@@ -1,6 +1,4 @@
 import xbmc, xbmcgui, xbmcvfs
-import json
-import os
 
 # Define your views - adjust view IDs and localization strings as needed for your skin
 # Base view templates
@@ -11,7 +9,7 @@ BASE_VIEWS = {
     'Slide': {'viewid': '53', 'localized': '31100'},
     'PosterInfo': {'viewid': '54', 'localized': '31101'},
     'LandscapeInfo': {'viewid': '55', 'localized': '311012'},
-    'ListInfo': {'viewid': '56', 'localized': '31107'},
+    'FlixInfo': {'viewid': '56', 'localized': '31107'},
     'Season': {'viewid': '57', 'localized': '311024'},
     'Wall': {'viewid': '500', 'localized': '311022'},
     'LandscapeWall': {'viewid': '501', 'localized': '311023'},
@@ -24,24 +22,26 @@ def make_view(label, content_type):
     return base
 
 # Define which views are available for each content type
-MOVIE_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'ListInfo', 'Wall', 'LandscapeWall']
-TVSHOW_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'ListInfo', 'Wall', 'LandscapeWall']
-SEASON_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'ListInfo', 'Season', 'Wall', 'LandscapeWall']
-EPISODE_VIEWS = ['List', 'PosterFlow', 'Slide', 'LandscapeInfo', 'ListInfo', 'LandscapeWall']
-EPISODE_LIST_VIEWS = ['List', 'LandscapeInfo', 'ListInfo', 'LandscapeWall']
-ADDON_VIEWS = ['List', 'ListInfo']
-FAVOURITES_VIEWS = ['List', 'IconWall', 'ListInfo']
-MENU_VIEWS = ['List', 'IconWall', 'ListInfo']
+MOVIE_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'FlixInfo', 'Wall', 'LandscapeWall']
+TVSHOW_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'FlixInfo', 'Wall', 'LandscapeWall']
+SEASON_VIEWS = ['List', 'PosterFlow', 'Slide', 'PosterInfo', 'LandscapeInfo', 'FlixInfo', 'Season', 'Wall', 'LandscapeWall']
+EPISODE_LIST_VIEWS = ['List', 'PosterFlow', 'Slide', 'LandscapeInfo', 'FlixInfo', 'LandscapeWall']
+EPISODE_VIEWS = ['List', 'LandscapeInfo', 'LandscapeWall']
+ADDON_VIEWS = ['List']
+FAVOURITES_VIEWS = ['List', 'IconWall']
+FILES_VIEWS = ['List', 'IconWall']
+MENU_VIEWS = ['List', 'IconWall']
 
 # Build the complete VIEWS dictionary
 VIEWS = {
     'movies': [make_view(view, 'movies') for view in MOVIE_VIEWS],
     'tvshows': [make_view(view, 'tvshows') for view in TVSHOW_VIEWS],
     'seasons': [make_view(view, 'seasons') for view in SEASON_VIEWS],
-    'episodes.outside': [make_view(view, 'episodes') for view in EPISODE_VIEWS],
-    'episodes.inside': [make_view(view, 'episodes') for view in EPISODE_LIST_VIEWS],
+    'episodes.outside': [make_view(view, 'episodes') for view in EPISODE_LIST_VIEWS],
+    'episodes.inside': [make_view(view, 'episodes') for view in EPISODE_VIEWS],
     'addons': [make_view(view, 'addons') for view in ADDON_VIEWS],
     'favourites': [make_view(view, 'favourites') for view in FAVOURITES_VIEWS],
+    'files': [make_view(view, 'files') for view in FILES_VIEWS],
     '': [make_view(view, 'menu') for view in MENU_VIEWS],  # Empty content type for menus
 }
 
@@ -109,41 +109,3 @@ def select_view():
     dialog = ViewSelectorDialog('Custom_1122_ViewSelector.xml', xbmcvfs.translatePath('special://skin/'), 'Default', content_type=content_type, current_view=current_view)
     dialog.doModal()
     del dialog
-
-# def get_content_type():
-#     if xbmc.getCondVisibility('Container.Content(episodes)'):
-#         if xbmc.getCondVisibility('String.StartsWith(Container.PluginCategory,Season)'):
-#             return 'episodes.inside'
-#         return 'episodes.outside'
-#     content = xbmc.getInfoLabel('Container.Content')
-#     return '' if not content else content
-
-# def select_view():
-#     xbmc.executebuiltin('Action(right)')
-#     xbmc.sleep(500)
-#     xbmc.executebuiltin('SetProperty(ViewTransitioning,true,home)')
-#     content_type = get_content_type()
-#     current_view = xbmc.getInfoLabel('Container.Viewmode')
-#     if not VIEWS.get(content_type, []):
-#         xbmc.executebuiltin(f'Skin.SetString(Skin.ForcedView.{content_type},{current_view})')
-#         xbmc.executebuiltin('ClearProperty(ViewTransitioning,home)')
-#         return
-#     views = VIEWS[content_type]
-#     labels = [view['label'] for view in views]
-#     dialog = xbmcgui.Dialog()
-#     index = dialog.select('Select View', labels)
-#     if index < 0:
-#         xbmc.executebuiltin(f'Skin.SetString(Skin.ForcedView.{content_type},{current_view})')
-#         xbmc.executebuiltin('ClearProperty(ViewTransitioning,home)')
-#         return
-#     view = views[index]
-#     xbmc.executebuiltin(f'Skin.Reset(Skin.ForcedView.{content_type})')
-#     xbmc.sleep(200)
-#     xbmc.executebuiltin(f'SetProperty(ViewSwitchLabel,{view["label"]},home)')
-#     for _ in range(3):
-#         xbmc.executebuiltin(f'Container.SetViewMode({view["viewid"]})')
-#         xbmc.sleep(500)
-#         localized_value = xbmc.getLocalizedString(int(view["localized"]))
-#         xbmc.executebuiltin(f'Skin.SetString(Skin.ForcedView.{content_type},{localized_value})')
-#     xbmc.executebuiltin('ClearProperty(ViewTransitioning,home)')
-#     xbmc.executebuiltin('ClearProperty(ViewSwitchLabel,home)')
