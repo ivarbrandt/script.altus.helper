@@ -80,6 +80,11 @@ def routing():
 
         return SPaths().open_search_window()
 
+    if mode == "toggle_search_provider":
+        from modules.search_utils import SPaths
+
+        return SPaths().toggle_search_provider()
+
     if mode == "set_api_key":
         from modules.custom_actions import set_api_key
 

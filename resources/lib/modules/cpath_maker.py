@@ -840,6 +840,50 @@ def starting_widgets(section=None):
     except:
         pass
 
+def starting_search_widgets():
+    """
+    Load stacked widgets for search window.
+    """
+    start_time = time.time()
+    window = xbmcgui.Window(11121)
+    window.setProperty("altus.search.widgets_load_state", "processing")
+    search_widgets = {
+        26020: "$VAR[SearchProviderTRAKTListsVar]",
+        26021: "$VAR[SearchProviderTRAKTListsMoviesVar]",
+        26022: "$VAR[SearchProviderTRAKTListsTVShowsVar]"
+    }
+    found_stacked_widgets = False
+    try:
+        for widget_id, widget_path in search_widgets.items():
+            actual_path = xbmc.getInfoLabel(widget_path)
+            if not actual_path:
+                continue
+            found_stacked_widgets = True
+            try:
+                first_item = files_get_directory(actual_path)[0]
+                if not first_item:
+                    continue
+                cpath_label, cpath_path = first_item["label"], first_item["file"]
+                window.setProperty(f"altus.{widget_id}.label", cpath_label)
+                window.setProperty(f"altus.{widget_id}.path", cpath_path)
+            except:
+                continue
+    except Exception as e:
+        xbmc.log(f"Error in starting_search_widgets: {str(e)}", xbmc.LOGERROR)
+    if found_stacked_widgets:
+        end_time = time.time()
+        execution_time = end_time - start_time
+        load_time_seconds = round(execution_time)
+        window.setProperty("altus.search.widgets_load_time", str(load_time_seconds))
+        window.setProperty("altus.search.widgets_load_state", "finished")
+        xbmc.Monitor().waitForAbort(3)
+        window.clearProperty("altus.search.widgets_load_state")
+        window.clearProperty("altus.search.widgets_load_time")
+    try:
+        del window
+    except:
+        pass
+
 
 # def starting_widgets():
 #     window = xbmcgui.Window(10000)

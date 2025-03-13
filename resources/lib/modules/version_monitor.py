@@ -25,15 +25,15 @@ def check_for_update(skin_id):
     if property_version == installed_version:
         return
     from modules.cpath_maker import remake_all_cpaths, starting_widgets
-
-    # from modules.search_utils import remake_all_spaths
-
+    from modules.monitors.search import SearchMonitor
+    from modules.search_utils import SPaths
     set_installed_version(skin_id, installed_version)
     sleep(1000)
     remake_all_cpaths(silent=True)
+    temp_monitor = SearchMonitor(SPaths())
+    temp_monitor.refresh_search_history()
     starting_widgets()
-    # remake_all_spaths(silent=True)
-
+    
 
 def set_installed_version(skin_id, installed_version):
     window.setProperty("%s.installed_version" % skin_id, installed_version)

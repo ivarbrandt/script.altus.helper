@@ -2,9 +2,11 @@ import xbmc, xbmcgui, xbmcvfs
 from threading import Thread
 from modules.logger import logger
 
+from modules.search_utils import SPaths
 from modules.monitors.ratings import RatingsMonitor
 from modules.monitors.image import ImageMonitor, ImageColorAnalyzer, ImageAnalysisConfig
 from modules.databases.ratings import RatingsDatabase
+from modules.monitors.search import SearchMonitor
 from modules.config import SETTINGS_PATH
 
 
@@ -37,6 +39,7 @@ class Service(xbmc.Monitor):
         self.get_visibility = xbmc.getCondVisibility
         self.image_monitor = ImageMonitor(ImageColorAnalyzer, ImageAnalysisConfig())
         self.ratings_monitor = RatingsMonitor(RatingsDatabase(), self.home_window)
+        self.search_monitor = SearchMonitor(SPaths())
         self._update_section_states()
 
     def _update_section_states(self):
