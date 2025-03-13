@@ -86,8 +86,10 @@ class SPaths:
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
         self.home_window.clearProperty("altus.search.input.trakt.encoded")
-        self.home_window.setProperty("altus.search.history.empty", 
-                            "Your search history is empty. Click the search icon above to perform a new search.")
+        self.home_window.setProperty(
+            "altus.search.history.empty",
+            "Your search history is empty. Click the search icon above to perform a new search.",
+        )
         return True
 
     def fetch_all_spaths(self):
@@ -101,7 +103,7 @@ class SPaths:
             "SELECT spath_id FROM spath WHERE spath = ?", (spath,)
         ).fetchone()
         return result[0] if result else None
-    
+
     def update_search_history_properties(self, search_term, existing_spath_id):
         """Update search history properties to reflect a new search term. Moves existing terms down and places the new/existing term at the top."""
         count_str = self.home_window.getProperty("altus.search.history.count")
@@ -112,8 +114,12 @@ class SPaths:
                 existing_property_index = i
                 break
         if existing_property_index is not None:
-            term_to_move = self.home_window.getProperty(f"altus.search.history.{existing_property_index}")
-            id_to_move = self.home_window.getProperty(f"altus.search.history.{existing_property_index}.id")
+            term_to_move = self.home_window.getProperty(
+                f"altus.search.history.{existing_property_index}"
+            )
+            id_to_move = self.home_window.getProperty(
+                f"altus.search.history.{existing_property_index}.id"
+            )
             for i in range(existing_property_index, 1, -1):
                 prev_term = self.home_window.getProperty(f"altus.search.history.{i-1}")
                 prev_id = self.home_window.getProperty(f"altus.search.history.{i-1}.id")
@@ -128,9 +134,13 @@ class SPaths:
                 self.home_window.setProperty(f"altus.search.history.{i+1}", term)
                 self.home_window.setProperty(f"altus.search.history.{i+1}.id", term_id)
             self.home_window.setProperty("altus.search.history.1", search_term)
-            self.home_window.setProperty("altus.search.history.1.id", str(existing_spath_id))
+            self.home_window.setProperty(
+                "altus.search.history.1.id", str(existing_spath_id)
+            )
             if count < self.max_history_items:
-                self.home_window.setProperty("altus.search.history.count", str(count + 1))
+                self.home_window.setProperty(
+                    "altus.search.history.count", str(count + 1)
+                )
 
     def open_search_window(self):
         """Open search window and focus appropriate control based on history state"""
@@ -143,8 +153,10 @@ class SPaths:
         count_str = self.home_window.getProperty("altus.search.history.count")
         count = int(count_str) if count_str else 0
         if count == 0:
-            self.home_window.setProperty("altus.search.history.empty", 
-                                "Your search history is empty. Click the search icon to perform a new search.")
+            self.home_window.setProperty(
+                "altus.search.history.empty",
+                "Your search history is empty. Click the search icon to perform a new search.",
+            )
             xbmc.executebuiltin("SetFocus(802)")
         else:
             self.home_window.clearProperty("altus.search.history.empty")
@@ -171,17 +183,20 @@ class SPaths:
         self.update_search_history_properties(search_term, existing_spath_id)
         self.home_window.setProperty("altus.search.input", search_term)
         self.home_window.setProperty("altus.search.input.encoded", encoded_search_term)
-        self.home_window.setProperty("altus.search.input.trakt.encoded", encoded_search_term)
+        self.home_window.setProperty(
+            "altus.search.input.trakt.encoded", encoded_search_term
+        )
         xbmc.sleep(200)
         if not from_history:
             xbmc.executebuiltin("SetFocus(2000)")
         xbmc.sleep(100)
+
         def load_widgets_and_clear_flag():
             starting_search_widgets()
             xbmc.sleep(800)
             self.home_window.clearProperty("altus.search.refreshing")
-        Thread(target=load_widgets_and_clear_flag).start()
 
+        Thread(target=load_widgets_and_clear_flag).start()
 
     def re_search(self):
         search_term = xbmc.getInfoLabel("ListItem.Label")
@@ -209,6 +224,25 @@ class SPaths:
         else:
             next_provider = "1"
         xbmc.executebuiltin(f"Skin.SetString(current_search_provider,{next_provider})")
+
+    def refresh_search_history_on_skin_update(self):
+        """Method to refresh search history properties after skin updates"""
+        history = self.fetch_all_spaths()
+        for i in range(1, self.max_history_items + 1):
+            self.home_window.clearProperty(f"altus.search.history.{i}")
+            self.home_window.clearProperty(f"altus.search.history.{i}.id")
+        for i, (id, term) in enumerate(history[: self.max_history_items], 1):
+            self.home_window.setProperty(f"altus.search.history.{i}", term)
+            self.home_window.setProperty(f"altus.search.history.{i}.id", str(id))
+        count = min(len(history), self.max_history_items)
+        self.home_window.setProperty("altus.search.history.count", str(count))
+        if count == 0:
+            self.home_window.setProperty(
+                "altus.search.history.empty",
+                "Your search history is empty. Click the search icon to perform a new search.",
+            )
+        else:
+            self.home_window.clearProperty("altus.search.history.empty")
 
 
 # class SPaths:

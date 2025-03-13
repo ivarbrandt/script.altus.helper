@@ -6,6 +6,8 @@ from xbmcvfs import translatePath
 from xbmcaddon import Addon
 import json
 import os
+from modules.cpath_maker import remake_all_cpaths, starting_widgets
+from modules.search_utils import SPaths
 
 # from modules.logger import logger
 
@@ -24,16 +26,13 @@ def check_for_update(skin_id):
         return set_installed_version(skin_id, installed_version)
     if property_version == installed_version:
         return
-    from modules.cpath_maker import remake_all_cpaths, starting_widgets
-    from modules.monitors.search import SearchMonitor
-    from modules.search_utils import SPaths
     set_installed_version(skin_id, installed_version)
     sleep(1000)
     remake_all_cpaths(silent=True)
-    temp_monitor = SearchMonitor(SPaths())
-    temp_monitor.refresh_search_history()
+    spaths = SPaths()
+    spaths.refresh_search_history_on_skin_update()
     starting_widgets()
-    
+
 
 def set_installed_version(skin_id, installed_version):
     window.setProperty("%s.installed_version" % skin_id, installed_version)
