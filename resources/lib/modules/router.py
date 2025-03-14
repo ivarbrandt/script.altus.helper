@@ -39,10 +39,11 @@ def routing():
         from modules.version_monitor import check_for_profile_change
 
         return check_for_profile_change(_get("skin_id"))
-    
+
     if mode == "starting_widgets":
         from modules.cpath_maker import starting_widgets
-        section = params.get('section', None)
+
+        section = params.get("section", None)
         return starting_widgets(section=section)
 
     if mode == "manage_widgets":
@@ -59,6 +60,11 @@ def routing():
         from modules.cpath_maker import remake_all_cpaths
 
         return remake_all_cpaths()
+
+    if mode == "refresh_search_history":
+        from modules.search_utils import SPaths
+
+        return SPaths().refresh_search_history()
 
     if mode == "search_input":
         from modules.search_utils import SPaths
@@ -104,7 +110,7 @@ def routing():
         from modules.custom_actions import set_image
 
         return set_image()
-    
+
     if mode == "set_blurradius":
         from modules.custom_actions import set_blurradius
 
@@ -154,10 +160,10 @@ def routing():
         from modules.custom_actions import check_api_key_on_load
 
         return check_api_key_on_load()
-    
+
     # if mode == "getkodisettings":
     #     from modules.custom_actions import getkodisettings
-        
+
     #     return getkodisettings(params)
 
     # if mode == "set_widget_boundaries":

@@ -31,7 +31,7 @@ def check_for_update(skin_id):
     sleep(1000)
     remake_all_cpaths(silent=True)
     spaths = SPaths()
-    spaths.refresh_search_history_on_skin_update()
+    spaths.refresh_search_history()
     starting_widgets()
 
 
