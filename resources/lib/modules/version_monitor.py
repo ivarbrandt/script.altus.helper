@@ -17,100 +17,19 @@ PROFILE_PATH = os.path.join(
 )
 
 
-def log_error(function_name, error):
-    """Enhanced error logging function"""
-    import traceback
-
-    error_details = traceback.format_exc()
-    xbmc.log(f"Error in {function_name}: {str(error)}", level=xbmc.LOGERROR)
-    xbmc.log(f"Error details: {error_details}", level=xbmc.LOGERROR)
-
-
 def check_for_update(skin_id):
     property_version = window.getProperty("%s.installed_version" % skin_id)
     installed_version = Addon(id=skin_id).getAddonInfo("version")
-
-    xbmc.log(
-        f"Checking for update: Property version: {property_version}, Installed version: {installed_version}",
-        level=xbmc.LOGINFO,
-    )
-
-    # If property version not set or matches current, just return
     if not property_version:
         return set_installed_version(skin_id, installed_version)
     if property_version == installed_version:
         return
+    from modules.cpath_maker import remake_all_cpaths, starting_widgets
 
-    # Update the version property first
     set_installed_version(skin_id, installed_version)
-    xbmc.log("Version property updated, sleeping...", level=xbmc.LOGINFO)
-
-    # Delay to ensure property is set
     sleep(1000)
-
-    # Import and run remake_all_cpaths
-    try:
-        xbmc.log("Importing cpath_maker...", level=xbmc.LOGINFO)
-        from modules.cpath_maker import remake_all_cpaths, starting_widgets
-
-        xbmc.log("Running remake_all_cpaths...", level=xbmc.LOGINFO)
-        remake_all_cpaths(silent=True)
-        xbmc.log("remake_all_cpaths completed successfully", level=xbmc.LOGINFO)
-    except Exception as e:
-        log_error("remake_all_cpaths", e)
-
-    # Refresh search history separately with error handling
-    try:
-        xbmc.log("Importing search_utils...", level=xbmc.LOGINFO)
-        from modules.search_utils import SPaths
-
-        xbmc.log("Creating SPaths instance...", level=xbmc.LOGINFO)
-        spaths = SPaths()
-        # Call refresh_search_history only if it exists
-        if hasattr(spaths, "refresh_search_history"):
-            xbmc.log("Running refresh_search_history...", level=xbmc.LOGINFO)
-            spaths.refresh_search_history()
-            xbmc.log(
-                "refresh_search_history completed successfully", level=xbmc.LOGINFO
-            )
-        else:
-            xbmc.log(
-                "refresh_search_history method not found on SPaths instance!",
-                level=xbmc.LOGWARNING,
-            )
-    except Exception as e:
-        log_error("refresh_search_history", e)
-
-    # Start widgets separately with error handling
-    try:
-        if "starting_widgets" in locals():
-            xbmc.log("Running starting_widgets...", level=xbmc.LOGINFO)
-            starting_widgets()
-            xbmc.log("starting_widgets completed successfully", level=xbmc.LOGINFO)
-        else:
-            xbmc.log("starting_widgets function not available!", level=xbmc.LOGWARNING)
-    except Exception as e:
-        log_error("starting_widgets", e)
-
-    xbmc.log("check_for_update completed", level=xbmc.LOGINFO)
-
-
-# def check_for_update(skin_id):
-#     property_version = window.getProperty("%s.installed_version" % skin_id)
-#     installed_version = Addon(id=skin_id).getAddonInfo("version")
-#     if not property_version:
-#         return set_installed_version(skin_id, installed_version)
-#     if property_version == installed_version:
-#         return
-#     from modules.cpath_maker import remake_all_cpaths, starting_widgets
-#     from modules.search_utils import SPaths
-
-#     set_installed_version(skin_id, installed_version)
-#     sleep(1000)
-#     remake_all_cpaths(silent=True)
-#     spaths = SPaths()
-#     spaths.refresh_search_history()
-#     starting_widgets()
+    remake_all_cpaths(silent=True)
+    starting_widgets()
 
 
 def set_installed_version(skin_id, installed_version):
