@@ -77,7 +77,7 @@ def play_trailer():
         play_url = xbmc.getInfoLabel("Skin.String(TrailerPlaybackURL)")
     if play_url:
         xbmc.executebuiltin("Skin.SetString(TrailerPlaying, true)")
-        xbmc.executebuiltin(f"PlayMedia({play_url},0,noresume)")
+        xbmc.executebuiltin(f"PlayMedia({play_url},1,noresume)")
 
 
 def set_blurradius():

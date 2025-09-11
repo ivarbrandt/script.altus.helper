@@ -756,44 +756,24 @@ def remake_all_cpaths(silent=False):
         xbmcgui.Dialog().ok("Altus", "Menus and widgets remade")
 
 
-def starting_widgets(section=None):
+def starting_widgets():
     """
-    Load stacked widgets with section-specific initialization tracking.
-    Args:
-        section (str, optional): Specific section to load. If None, checks all sections.
+    Load stacked widgets for home window.
     """
-    start_time = time.time()
     window = xbmcgui.Window(10000)
-    section_settings = {
-        "movie": "HomeMenuNoMoviesButton",
-        "tvshow": "HomeMenuNoTVShowsButton",
-        "custom1": "HomeMenuNoCustom1Button",
-        "custom2": "HomeMenuNoCustom2Button",
-        "custom3": "HomeMenuNoCustom3Button"
-    }
-    if not section:
-        window.setProperty("altus.starting_widgets", "true")
-    sections_to_process = []
-    if section:
-        if not xbmc.getCondVisibility(f"Skin.HasSetting({section_settings.get(section, '')})"):
-            sections_to_process = [(section, f"{section}.widget")]
-    else:
-        sections_to_process = [
-            (sec, f"{sec}.widget") 
-            for sec in section_settings.keys() 
-            if not xbmc.getCondVisibility(f"Skin.HasSetting({section_settings[sec]})")
-        ]
-    found_stacked_widgets = False
-    for section_key, widget_key in sections_to_process:
+    window.setProperty("altus.starting_widgets", "true")
+    for item in (
+        "movie.widget",
+        "tvshow.widget",
+        "custom1.widget",
+        "custom2.widget",
+        "custom3.widget",
+    ):
         try:
-            active_cpaths = CPaths(widget_key).fetch_current_cpaths()
+            active_cpaths = CPaths(item).fetch_current_cpaths()
             if not active_cpaths:
                 continue
-            has_stacked = any("Stacked" in widget.get("cpath_label", "") 
-                            for widget in active_cpaths.values())
-            if has_stacked and not found_stacked_widgets:
-                found_stacked_widgets = True
-                window.setProperty("altus.widgets_load_state", "processing")
+            widget_type = item.split(".")[0]
             widget_type_id = {
                 "movie": 19010,
                 "tvshow": 22010,
@@ -801,7 +781,7 @@ def starting_widgets(section=None):
                 "custom2": 24010,
                 "custom3": 25010,
             }
-            base_list_id = widget_type_id.get(section_key)
+            base_list_id = widget_type_id.get(widget_type)
             for count in range(1, 51):
                 active_widget = active_cpaths.get(count, {})
                 if not active_widget:
@@ -826,39 +806,28 @@ def starting_widgets(section=None):
                 window.setProperty("altus.%s.path" % list_id, cpath_path)
         except:
             pass
-    if found_stacked_widgets:
-        end_time = time.time()
-        execution_time = end_time - start_time
-        load_time_seconds = round(execution_time)
-        window.setProperty("altus.widgets_load_time", str(load_time_seconds))
-        window.setProperty("altus.widgets_load_state", "finished")
-        xbmc.Monitor().waitForAbort(3)
-        window.clearProperty("altus.widgets_load_state")
-        window.clearProperty("altus.widgets_load_time")
     try:
         del window
     except:
         pass
 
+
 def starting_search_widgets():
     """
     Load stacked widgets for search window.
     """
-    start_time = time.time()
     window = xbmcgui.Window(11121)
-    window.setProperty("altus.search.widgets_load_state", "processing")
+    window.setProperty("altus.search.widgets", "finished")
     search_widgets = {
         26020: "$VAR[SearchProviderTRAKTListsVar]",
         26021: "$VAR[SearchProviderTRAKTListsMoviesVar]",
         26022: "$VAR[SearchProviderTRAKTListsTVShowsVar]"
     }
-    found_stacked_widgets = False
-    try:
-        for widget_id, widget_path in search_widgets.items():
+    for widget_id, widget_path in search_widgets.items():
+        try:
             actual_path = xbmc.getInfoLabel(widget_path)
             if not actual_path:
                 continue
-            found_stacked_widgets = True
             try:
                 first_item = files_get_directory(actual_path)[0]
                 if not first_item:
@@ -868,17 +837,8 @@ def starting_search_widgets():
                 window.setProperty(f"altus.{widget_id}.path", cpath_path)
             except:
                 continue
-    except Exception as e:
-        xbmc.log(f"Error in starting_search_widgets: {str(e)}", xbmc.LOGERROR)
-    if found_stacked_widgets:
-        end_time = time.time()
-        execution_time = end_time - start_time
-        load_time_seconds = round(execution_time)
-        window.setProperty("altus.search.widgets_load_time", str(load_time_seconds))
-        window.setProperty("altus.search.widgets_load_state", "finished")
-        xbmc.Monitor().waitForAbort(3)
-        window.clearProperty("altus.search.widgets_load_state")
-        window.clearProperty("altus.search.widgets_load_time")
+        except:
+            pass
     try:
         del window
     except:

@@ -1,4 +1,5 @@
 import xbmc, xbmcgui, xbmcvfs
+from .helper import winprop
 
 # Define your views - adjust view IDs and localization strings as needed for your skin
 # Base view templates
@@ -18,7 +19,7 @@ BASE_VIEWS = {
 def make_view(label, content_type):
     base = BASE_VIEWS[label].copy()
     base['label'] = label
-    base['preview'] = f"{label.lower()}_{content_type}_preview.jpg"
+    base['preview'] = f"{label.lower()}_{content_type}.jpg"
     return base
 
 # Define which views are available for each content type
@@ -30,6 +31,7 @@ EPISODE_VIEWS = ['List', 'LandscapeInfo', 'LandscapeWall']
 ADDON_VIEWS = ['List']
 FAVOURITES_VIEWS = ['List', 'IconWall']
 FILES_VIEWS = ['List', 'IconWall']
+IMAGES_VIEWS = ['List', 'IconWall']
 MENU_VIEWS = ['List', 'IconWall']
 
 # Build the complete VIEWS dictionary
@@ -37,11 +39,12 @@ VIEWS = {
     'movies': [make_view(view, 'movies') for view in MOVIE_VIEWS],
     'tvshows': [make_view(view, 'tvshows') for view in TVSHOW_VIEWS],
     'seasons': [make_view(view, 'seasons') for view in SEASON_VIEWS],
-    'episodes.outside': [make_view(view, 'episodes') for view in EPISODE_LIST_VIEWS],
+    'episodes.outside': [make_view(view, 'episode_lists') for view in EPISODE_LIST_VIEWS],
     'episodes.inside': [make_view(view, 'episodes') for view in EPISODE_VIEWS],
     'addons': [make_view(view, 'addons') for view in ADDON_VIEWS],
     'favourites': [make_view(view, 'favourites') for view in FAVOURITES_VIEWS],
     'files': [make_view(view, 'files') for view in FILES_VIEWS],
+    'images': [make_view(view, 'files') for view in IMAGES_VIEWS],
     '': [make_view(view, 'menu') for view in MENU_VIEWS],  # Empty content type for menus
 }
 
@@ -65,7 +68,6 @@ class ViewSelectorDialog(xbmcgui.WindowXMLDialog):
         for view in self.views:
             list_item = xbmcgui.ListItem(view['label'])
             self.viewlist.addItem(list_item)
-        
         if self.views:
             self.viewlist.selectItem(0)
             self.setFocusId(3000)
@@ -96,16 +98,16 @@ class ViewSelectorDialog(xbmcgui.WindowXMLDialog):
 def select_view():
     xbmc.executebuiltin('Action(right)')
     xbmc.sleep(500)
+    winprop(f"Returnto51", "")
+    winprop(f"Returnto53", "")
+    winprop(f"Returnto56", "")
     xbmc.executebuiltin('SetProperty(ViewTransitioning,true,home)')
-    
     content_type = get_content_type()
     current_view = xbmc.getInfoLabel('Container.Viewmode')
-    
     if not VIEWS.get(content_type, []):
         xbmc.executebuiltin(f'Skin.SetString(Skin.ForcedView.{content_type},{current_view})')
         xbmc.executebuiltin('ClearProperty(ViewTransitioning,home)')
         return
-
     dialog = ViewSelectorDialog('Custom_1122_ViewSelector.xml', xbmcvfs.translatePath('special://skin/'), 'Default', content_type=content_type, current_view=current_view)
     dialog.doModal()
     del dialog

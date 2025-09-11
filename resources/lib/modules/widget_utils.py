@@ -121,29 +121,29 @@ def widget_monitor(list_id):
         pass
 
 
-def widget_info_timer(list_id):
-    monitor = xbmc.Monitor()
-    window = xbmcgui.Window(xbmcgui.getCurrentWindowId())
-    try:
-        delay = float(xbmc.getInfoLabel("Skin.String(altus_widget_autoinfo_delay)"))
-    except (ValueError, TypeError):
-        delay = 750
-    delay_seconds = delay / 1000
-    last_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
-    countdown = delay_seconds
-    while not monitor.abortRequested():
-        if monitor.waitForAbort(0.25):
-            break
-        if not xbmc.getCondVisibility(f"Control.HasFocus({list_id})"):
-            break
-        current_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
-        if current_item != last_item:
-            last_item = current_item
-            countdown = delay_seconds
-            continue
-        countdown -= 0.25
-        if countdown <= 0:
-            window.setProperty(f"WidgetInfo.Timer.Complete.{list_id}", "true")
+# def widget_info_timer(list_id):
+#     monitor = xbmc.Monitor()
+#     window = xbmcgui.Window(xbmcgui.getCurrentWindowId())
+#     try:
+#         delay = float(xbmc.getInfoLabel("Skin.String(altus_widget_autoinfo_delay)"))
+#     except (ValueError, TypeError):
+#         delay = 750
+#     delay_seconds = delay / 1000
+#     last_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
+#     countdown = delay_seconds
+#     while not monitor.abortRequested():
+#         if monitor.waitForAbort(0.25):
+#             break
+#         if not xbmc.getCondVisibility(f"Control.HasFocus({list_id})"):
+#             break
+#         current_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
+#         if current_item != last_item:
+#             last_item = current_item
+#             countdown = delay_seconds
+#             continue
+#         countdown -= 0.25
+#         if countdown <= 0:
+#             window.setProperty(f"WidgetInfo.Timer.Complete.{list_id}", "true")
 
 
 def spotlight_timer(list_id):
@@ -167,4 +167,44 @@ def spotlight_timer(list_id):
         countdown -= 0.25
         if countdown <= 0:
             xbmc.executebuiltin('Action(right)')
+
+def wall_timer():
+    if xbmc.getCondVisibility("Control.IsVisible(500)"):
+        control_id = "500"
+    elif xbmc.getCondVisibility("Control.IsVisible(501)"):
+        control_id = "501"
+    else:
+        return
+    monitor = xbmc.Monitor()
+    returnto51_exists = not xbmc.getCondVisibility("String.IsEmpty(Window(Home).Property(Returnto51))")
+    returnto53_exists = not xbmc.getCondVisibility("String.IsEmpty(Window(Home).Property(Returnto53))")
+    returnto56_exists = not xbmc.getCondVisibility("String.IsEmpty(Window(Home).Property(Returnto56))")
+    if not (returnto51_exists or returnto53_exists or returnto56_exists):
+        return
+    try:
+        delay_seconds = float(xbmc.getInfoLabel("Skin.String(altus_revert_from_wall_delay)"))
+    except (ValueError, TypeError):
+        delay_seconds = 2
+    # xbmc.executebuiltin('Notification(Wall Timer, Timer activated, 2000, special://home/addons/script.altus.helper/resources/media/timer.png)')
+    last_item = xbmc.getInfoLabel(f"Container({control_id}).ListItem.Label")
+    countdown = delay_seconds
+    while not monitor.abortRequested():
+        if monitor.waitForAbort(0.25):
+            break
+        if not xbmc.getCondVisibility(f"Control.HasFocus({control_id})"):
+            break
+        current_item = xbmc.getInfoLabel(f"Container({control_id}).ListItem.Label")
+        if current_item != last_item:
+            last_item = current_item
+            countdown = delay_seconds
+            continue
+        countdown -= 0.25
+        if countdown <= 0:
+            if returnto51_exists:
+                xbmc.executebuiltin("Container.SetViewMode(51)")
+            elif returnto53_exists:
+                xbmc.executebuiltin("Container.SetViewMode(53)")
+            elif returnto56_exists:
+                xbmc.executebuiltin("Container.SetViewMode(56)")
+            break
 

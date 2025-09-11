@@ -165,31 +165,41 @@ class RatingsDatabase:
     #             xbmc.log(f"Error clearing ratings database: {str(e)}", 2)
     #             dialog.notification("Altus", "Error clearing ratings", xbmcgui.NOTIFICATION_ERROR)
 
-    def delete_all_ratings(self):
-        dialog = xbmcgui.Dialog()
-        if dialog.yesno("Altus", "Are you sure you want to clear all ratings?"):
-            try:
-                with sqlite3.connect(self.db_path, timeout=60) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("DROP TABLE IF EXISTS ratings")
-                    # Recreate the table with new schema
-                    cursor.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS ratings (
-                            imdb_id TEXT,
-                            tmdb_id TEXT,
-                            ratings TEXT,
-                            last_updated TIMESTAMP,
-                            PRIMARY KEY (imdb_id, tmdb_id)
-                        );
-                        """
-                    )
-                    cursor.execute("VACUUM")
+    def delete_all_ratings(self, silent=False):
+        if not silent:
+            dialog = xbmcgui.Dialog()
+            if not dialog.yesno("Altus", "Are you sure you want to clear all ratings?"):
+                return
+        try:
+            with sqlite3.connect(self.db_path, timeout=60) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DROP TABLE IF EXISTS ratings")
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS ratings (
+                        imdb_id TEXT,
+                        tmdb_id TEXT,
+                        ratings TEXT,
+                        last_updated TIMESTAMP,
+                        PRIMARY KEY (imdb_id, tmdb_id)
+                    );
+                    """
+                )
+                cursor.execute("VACUUM")
+                home_window = xbmcgui.Window(10000)
+                timestamp = str(int(time.time()))
+                home_window.setProperty("altus.ratings_cache_invalidated", timestamp)
+                xbmc.log(f"Set cache invalidation marker: altus.ratings_cache_invalidated = {timestamp}", 2)
+                from modules.monitors.ratings import RatingsMonitor
+                RatingsMonitor.clear_properties_static(home_window)
+                if not silent:
+                    dialog = xbmcgui.Dialog()
                     dialog.ok("Altus", "All ratings have been cleared from the database.")
-                    # Update cache size after clearing
-                    calculate_cache_size()
-            except Exception as e:
-                xbmc.log(f"Error clearing ratings database: {str(e)}", 2)
+                calculate_cache_size()
+        except Exception as e:
+            xbmc.log(f"Error clearing ratings database: {str(e)}", 2)
+            if not silent:
+                dialog = xbmcgui.Dialog()
                 dialog.notification("Altus", "Error clearing ratings", xbmcgui.NOTIFICATION_ERROR)
 
 

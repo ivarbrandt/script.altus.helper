@@ -1,7 +1,6 @@
 import xbmc, xbmcgui, xbmcvfs
 from threading import Thread
 from modules.logger import logger
-
 from modules.monitors.ratings import RatingsMonitor
 from modules.monitors.image import ImageMonitor, ImageColorAnalyzer, ImageAnalysisConfig
 from modules.databases.ratings import RatingsDatabase
@@ -13,20 +12,6 @@ class Service(xbmc.Monitor):
 
     def __init__(self):
         super().__init__()
-        self.section_states = {
-            "movie": False,
-            "tvshow": False,
-            "custom1": False,
-            "custom2": False,
-            "custom3": False,
-        }
-        self.section_settings = {
-            "movie": "HomeMenuNoMoviesButton",
-            "tvshow": "HomeMenuNoTVShowsButton",
-            "custom1": "HomeMenuNoCustom1Button",
-            "custom2": "HomeMenuNoCustom2Button",
-            "custom3": "HomeMenuNoCustom3Button",
-        }
         self._initialize()
 
     def _initialize(self):
@@ -36,26 +21,9 @@ class Service(xbmc.Monitor):
         self.home_window = xbmcgui.Window(10000)
         self.get_infolabel = xbmc.getInfoLabel
         self.get_visibility = xbmc.getCondVisibility
-        self.image_monitor = ImageMonitor(ImageColorAnalyzer, ImageAnalysisConfig())
+        current_config = ImageAnalysisConfig.from_skin_settings()
+        self.image_monitor = ImageMonitor(ImageColorAnalyzer, current_config)
         self.ratings_monitor = RatingsMonitor(RatingsDatabase(), self.home_window)
-        self._update_section_states()
-
-    def _update_section_states(self):
-        """Update the current state of all sections."""
-        for section, setting in self.section_settings.items():
-            self.section_states[section] = not self.get_visibility(
-                f"Skin.HasSetting({setting})"
-            )
-
-    def _check_section_changes(self):
-        """Check for changes in section visibility and trigger widget loading if needed."""
-        for section, setting in self.section_settings.items():
-            current_state = not self.get_visibility(f"Skin.HasSetting({setting})")
-            if not self.section_states[section] and current_state:
-                xbmc.executebuiltin(
-                    f"RunScript(script.altus.helper,mode=starting_widgets,section={section})"
-                )
-            self.section_states[section] = current_state
 
     def run(self):
         """Start the service and monitor."""
@@ -65,9 +33,27 @@ class Service(xbmc.Monitor):
                 self.waitForAbort(2)
                 continue
             self.ratings_monitor.process_current_item()
-            if self.get_visibility("Window.IsVisible(Home)"):
-                self._check_section_changes()
+            self.monitor_view_properties()
             self.waitForAbort(0.2)
+
+    def monitor_view_properties(self):
+        """Monitor visible views and set return properties."""
+        if not hasattr(self, '_last_view_states'):
+            self._last_view_states = {
+                51: False,
+                53: False,
+                56: False
+            }
+        current_states = {}
+        for view_id in [51, 53, 56]:
+            current_states[view_id] = xbmc.getCondVisibility(f"Control.IsVisible({view_id})")
+        property_empty = {}
+        for view_id in [51, 53, 56]:
+            property_empty[view_id] = xbmc.getCondVisibility(f"String.IsEmpty(Window(Home).Property(Returnto{view_id}))")
+        for view_id in [51, 53, 56]:
+            if current_states[view_id] and not self._last_view_states[view_id] and property_empty[view_id]:
+                xbmc.executebuiltin(f"SetProperty(Returnto{view_id},true,Home)")
+        self._last_view_states = current_states
 
     def _should_pause(self):
         if self.home_window.getProperty("pause_services") == "true":

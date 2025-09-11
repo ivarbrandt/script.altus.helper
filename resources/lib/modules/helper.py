@@ -8,15 +8,9 @@ from .search_utils import SEARCH_DATABASE_PATH
 
 ADDON = xbmcaddon.Addon()
 ADDON_ID = ADDON.getAddonInfo("id")
-ADDON_DATA_PATH = os.path.join(
-    xbmcvfs.translatePath("special://profile/addon_data/%s" % ADDON_ID)
-)
-ADDON_DATA_IMG_PATH = os.path.join(
-    xbmcvfs.translatePath("special://profile/addon_data/%s/image_cache" % ADDON_ID)
-)
-ADDON_DATA_IMG_TEMP_PATH = os.path.join(
-    xbmcvfs.translatePath("special://profile/addon_data/%s/image_cache/temp" % ADDON_ID)
-)
+ADDON_DATA_PATH = xbmcvfs.translatePath(os.path.join("special://profile/addon_data/", ADDON_ID))
+ADDON_DATA_IMG_PATH = os.path.join(ADDON_DATA_PATH, "image_cache")
+ADDON_DATA_IMG_TEMP_PATH = os.path.join(ADDON_DATA_PATH, "image_cache/temp")
 BLUR_PATH = os.path.join(ADDON_DATA_PATH, "blur_cache")
 COLOR_CACHE_FILE = os.path.join(ADDON_DATA_PATH, "color_cache.json")
 

@@ -3,60 +3,88 @@ import xbmcgui
 from threading import Thread, Lock
 import json
 import re
+from dataclasses import dataclass
 from typing import Optional, Tuple, Dict, Any
 from ..config import *
 from ..databases import RatingsDatabase
 from ..apis import MDbListClient, TMDbClient
 
+@dataclass
+class ReleaseWindowConfig:
+    """Configuration for digital release windows."""
+    recent_days: str = "7"
+    expired_days: str = "21"
+    
+    @classmethod
+    def from_skin_settings(cls):
+        """Create config from current skin settings."""
+        recent_days = xbmc.getInfoLabel("Skin.String(altus_digital_release_window)") or "7"
+        expired_days = xbmc.getInfoLabel("Skin.String(altus_digital_expired_window)") or "21"
+        return cls(recent_days=recent_days, expired_days=expired_days)
+    
+    def has_smart_status_settings_changes(self, other_config):
+        """Check if recent_days or expired_days have changed."""
+        return (self.recent_days != other_config.recent_days or 
+                self.expired_days != other_config.expired_days)
+
 
 class RatingsMonitor:
     """Monitors and manages media ratings."""
-
     def __init__(self, database: RatingsDatabase, home_window: xbmcgui.Window):
         self.database = database
         self.home_window = home_window
         self.get_infolabel = xbmc.getInfoLabel
         self.tmdb_client = TMDbClient(TMDB_API_KEY)
-
-        # State tracking
         self.last_set_id = None
         self.pending_id = None
         self.last_trailer_id = None
         self.current_ratings_thread = None
         self._rating_lock = Lock()
+        self.config = ReleaseWindowConfig.from_skin_settings()
+
 
     def process_current_item(self) -> None:
         """Process the current media item."""
+        self._check_smart_status_setting_changes()
         meta = self._get_current_item_meta()
         if not meta:
-            # self._clear_ratings_properties()
             return
-
         media_id = meta.get("id")
         if not media_id:
             return
-
         self._handle_trailer_update(media_id)
-
         if media_id != self.last_set_id or media_id != self.pending_id:
             self._process_ratings(media_id, meta)
+
+    def _check_smart_status_setting_changes(self):
+        current_config = ReleaseWindowConfig.from_skin_settings()
+        if self.config.has_smart_status_settings_changes(current_config):
+            self.config = current_config
+            self.database.delete_all_ratings(silent=True)
+            self.last_set_id = None
+            self.pending_id = None
+            self.last_trailer_id = None
+            xbmcgui.Dialog().notification(
+                "Smart status settings change detected", 
+                "Ratings cache cleared",
+                "special://skin/resources/icon.jpg",
+                3000
+            )
+            
 
     def _process_ratings(self, media_id: str, meta: Dict[str, Any]) -> None:
         """Process ratings for the current item."""
         with self._rating_lock:
-            # First check window property cache
-            cached_ratings = self.home_window.getProperty(
-                f"altus.cachedRatings.{media_id}"
-            )
-            if cached_ratings:
-                self._set_ratings_from_cache(media_id, cached_ratings)
-                return
-
-            # If no window cache, check database cache
+            cache_invalidated_time = self.home_window.getProperty("altus.ratings_cache_invalidated")
+            if not cache_invalidated_time:
+                cached_ratings = self.home_window.getProperty(
+                    f"altus.cachedRatings.{media_id}"
+                )
+                if cached_ratings:
+                    self._set_ratings_from_cache(media_id, cached_ratings)
+                    return
             cached_data = self.database.get_cached_ratings(media_id)
             if cached_data:
-                # For database cache hits, only update window properties
-                # No need to update database since we just got valid data from it
                 self.home_window.setProperty(
                     f"altus.cachedRatings.{media_id}", json.dumps(cached_data)
                 )
@@ -146,6 +174,14 @@ class RatingsMonitor:
             self.home_window.setProperty(f"altus.{key}", str(value))
         self.last_set_id = None
         self.pending_id = None
+
+    @staticmethod
+    def clear_properties_static(home_window):
+        """Clear all ratings properties."""
+        # List of all rating properties to clear
+        for key, value in EMPTY_RATINGS.items():
+            home_window.setProperty(f"altus.{key}", str(value))
+    
 
     def _get_current_item_meta(self) -> Optional[Dict[str, Any]]:
         """Get metadata for the current item."""

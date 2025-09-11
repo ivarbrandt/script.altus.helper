@@ -24,6 +24,11 @@ def routing():
         from modules.widget_utils import spotlight_timer
 
         return spotlight_timer(_get("list_id"))
+    
+    if mode == "wall_timer":
+        from modules.widget_utils import wall_timer
+
+        return wall_timer()
 
     if "actions" in mode:
         from modules import actions
@@ -43,8 +48,7 @@ def routing():
     if mode == "starting_widgets":
         from modules.cpath_maker import starting_widgets
 
-        section = params.get("section", None)
-        return starting_widgets(section=section)
+        return starting_widgets()
 
     if mode == "manage_widgets":
         from modules.cpath_maker import CPaths
