@@ -362,7 +362,7 @@ class ImageColorAnalyzer:
             dark = (20, 21, 21)  # FF141515
             white_contrast = get_contrast_ratio(get_luminance(*white), bg_luminance)
             dark_contrast = get_contrast_ratio(get_luminance(*dark), bg_luminance)
-            if white_contrast >= dark_contrast * 0.52:  # Bias towards white text
+            if white_contrast >= dark_contrast * 0.20:  # Bias towards white text
                 return "FFFFFFFF"
             return "FF141515"
 
@@ -439,7 +439,7 @@ class ImageColorAnalyzer:
     #         dark = (20, 21, 21)  # FF141515
     #         white_contrast = get_contrast_ratio(get_luminance(*white), bg_luminance)
     #         dark_contrast = get_contrast_ratio(get_luminance(*dark), bg_luminance)
-    #         if white_contrast >= dark_contrast * 0.52:  # Bias towards white text
+    #         if white_contrast >= dark_contrast * 0.23:  # Bias towards white text
     #             return "FFFFFFFF"
     #         return "FF141515"
 
