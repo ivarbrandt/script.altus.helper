@@ -7,7 +7,7 @@ SETTINGS_PATH = xbmcvfs.translatePath(
 BLUR_CONTAINER = xbmc.getInfoLabel("Skin.String(BlurContainer)") or 100000
 LOGO_CONTAINER = xbmc.getInfoLabel("Skin.String(LogoContainer)") or 100001
 BLUR_RADIUS = xbmc.getInfoLabel("Skin.String(BlurRadius)") or "20"
-BLUR_SATURATION = xbmc.getInfoLabel("Skin.String(BlurSaturation)") or "1.5"
+BLUR_SATURATION = xbmc.getInfoLabel("Skin.String(BlurSaturation)") or "1.0"
 RATINGS_DATABASE_PATH = xbmcvfs.translatePath(
     "special://profile/addon_data/script.altus.helper/ratings_cache.db"
 )

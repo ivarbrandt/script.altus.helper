@@ -8,14 +8,14 @@ from ..image import ImageColorAnalyzer
 @dataclass
 class ImageAnalysisConfig:
     radius: str = "20"
-    saturation: str = "1.5"
+    saturation: str = "1.0"
     background_setting: str = "0"
 
     @classmethod
     def from_skin_settings(cls):
         """Create config from current skin settings"""
         radius = xbmc.getInfoLabel("Skin.String(BlurRadius)") or "20"
-        saturation = xbmc.getInfoLabel("Skin.String(BlurSaturation)") or "1.5"
+        saturation = xbmc.getInfoLabel("Skin.String(BlurSaturation)") or "1.0"
         background_setting = xbmc.getInfoLabel("Skin.String(BackgroundSetting)") or "0"
         return cls(
             radius=radius, saturation=saturation, background_setting=background_setting
