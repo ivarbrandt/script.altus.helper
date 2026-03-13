@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import xbmc, xbmcgui
+from .helper import winprop
 
 # from modules.logger import logger
 
@@ -202,9 +203,12 @@ def wall_timer():
         if countdown <= 0:
             if returnto51_exists:
                 xbmc.executebuiltin("Container.SetViewMode(51)")
+                winprop(f"Returnto51", "")
             elif returnto53_exists:
                 xbmc.executebuiltin("Container.SetViewMode(53)")
+                winprop(f"Returnto53", "")
             elif returnto56_exists:
                 xbmc.executebuiltin("Container.SetViewMode(56)")
+                winprop(f"Returnto56", "")
             break
 

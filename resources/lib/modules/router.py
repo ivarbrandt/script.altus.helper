@@ -100,10 +100,10 @@ def routing():
 
         return set_api_key()
 
-    if mode == "select_view":
-        from modules.select_view import select_view
+    if mode == "save_view":
+        from modules.select_view import save_view
 
-        return select_view()
+        return save_view()
 
     if mode == "delete_all_ratings":
         from modules.databases.ratings import RatingsDatabase
