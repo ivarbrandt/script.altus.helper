@@ -40,35 +40,15 @@ class Service(xbmc.Monitor):
                 self.waitForAbort(2)
                 continue
             self.ratings_monitor.process_current_item()
-            self.monitor_view_properties()
             self.monitor_addon_views()
             self.waitForAbort(0.2)
-
-    def monitor_view_properties(self):
-        """Monitor visible views and set return properties."""
-        if not hasattr(self, '_last_view_states'):
-            self._last_view_states = {
-                51: False,
-                53: False,
-                56: False
-            }
-        current_states = {}
-        for view_id in [51, 53, 56]:
-            current_states[view_id] = xbmc.getCondVisibility(f"Control.IsVisible({view_id})")
-        property_empty = {}
-        for view_id in [51, 53, 56]:
-            property_empty[view_id] = xbmc.getCondVisibility(f"String.IsEmpty(Window(Home).Property(Returnto{view_id}))")
-        for view_id in [51, 53, 56]:
-            if current_states[view_id] and not self._last_view_states[view_id] and property_empty[view_id]:
-                xbmc.executebuiltin(f"SetProperty(Returnto{view_id},true,Home)")
-        self._last_view_states = current_states
 
     def _load_view_preferences(self):
         """Load view preferences from JSON, using mtime-based cache."""
         try:
             mtime = os.path.getmtime(VIEW_PREFERENCES_PATH)
             if mtime != self._view_prefs_mtime:
-                with open(VIEW_PREFERENCES_PATH, 'r') as f:
+                with open(VIEW_PREFERENCES_PATH, "r") as f:
                     self._view_prefs_cache = json.load(f)
                 self._view_prefs_mtime = mtime
         except (FileNotFoundError, json.JSONDecodeError, IOError):
@@ -81,28 +61,32 @@ class Service(xbmc.Monitor):
         # Set skin strings for all saved content types
         for ct, saved_view in addon_prefs.items():
             if isinstance(saved_view, dict):
-                xbmc.executebuiltin(f'Skin.SetString(Skin.ForcedView.{ct},{saved_view["label"]})')
+                xbmc.executebuiltin(
+                    f'Skin.SetString(Skin.ForcedView.{ct},{saved_view["label"]})'
+                )
         # Reset any content types this addon doesn't have saved
         all_content_types = set()
         for ap in prefs.values():
             if isinstance(ap, dict):
                 all_content_types.update(ap.keys())
         for ct in all_content_types - set(addon_prefs.keys()):
-            xbmc.executebuiltin(f'Skin.Reset(Skin.ForcedView.{ct})')
+            xbmc.executebuiltin(f"Skin.Reset(Skin.ForcedView.{ct})")
 
     def monitor_addon_views(self):
         """Apply saved per-addon view preferences when addon/content changes."""
-        plugin_name = self.get_infolabel('Container.PluginName')
-        content = self.get_infolabel('Container.Content')
-        if content == 'episodes':
-            if self.get_visibility('String.StartsWith(Container.PluginCategory,Season)'):
-                content_type = 'episodes.inside'
+        plugin_name = self.get_infolabel("Container.PluginName")
+        content = self.get_infolabel("Container.Content")
+        if content == "episodes":
+            if self.get_visibility(
+                "String.StartsWith(Container.PluginCategory,Season)"
+            ):
+                content_type = "episodes.inside"
             else:
-                content_type = 'episodes.outside'
+                content_type = "episodes.outside"
         else:
             content_type = content
 
-        addon_key = plugin_name if plugin_name else '__library__'
+        addon_key = plugin_name if plugin_name else "__library__"
         prefs = self._load_view_preferences()
 
         # When addon changes, preload all skin strings for the new addon
