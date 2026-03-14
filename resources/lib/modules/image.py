@@ -33,6 +33,7 @@ class ImageColorAnalyzer:
     _cache_dirty = False  # Flag to track if we need to write
     _last_write_time = 0  # Track when we last wrote to disk
     _pending_writes = {}  # Store pending cache entries
+
     def __init__(self, prop="listitem", file=None, radius=None, saturation=None):
         global OLD_IMAGE, OLD_LOGO
         if not hasattr(ImageColorAnalyzer, "_last_setting"):
@@ -57,7 +58,9 @@ class ImageColorAnalyzer:
             """Window.IsVisible(Home) | Window.IsVisible(1121) | 
             [Window.IsVisible(videos) + [Control.IsVisible(50) | Control.IsVisible(54) | Control.IsVisible(55) | Control.IsVisible(56) | Control.IsVisible(57)]]"""
         )
-        should_process_video_logo = xbmc.getCondVisibility("Window.IsVisible(VideoFullScreen.xml)")
+        should_process_video_logo = xbmc.getCondVisibility(
+            "Window.IsVisible(VideoFullScreen.xml)"
+        )
         if should_process_logo:
             self._process_logo(prop)
         if should_process_video_logo:
@@ -73,7 +76,9 @@ class ImageColorAnalyzer:
                 if saved_logo:
                     winprop(f"{prop}_clearlogo_cropped", saved_logo)
         else:
-            if xbmc.getCondVisibility("!Player.HasVideo + [ControlGroup(2000).HasFocus | Window.IsVisible(videos)]"):
+            if xbmc.getCondVisibility(
+                "!Player.HasVideo + [ControlGroup(2000).HasFocus | Window.IsVisible(videos)]"
+            ):
                 OLD_LOGO = ""
                 for prop_type in ["clearlogo_cropped"]:
                     winprop(f"{prop}_{prop_type}", "")
@@ -115,7 +120,9 @@ class ImageColorAnalyzer:
         colors = self.get_cached_colors(cache_key)
         processed_img = None
         if background_setting in ["1", "2"]:
-            filename = md5hash(self.image) + str(self.radius) + str(self.saturation) + ".png"
+            filename = (
+                md5hash(self.image) + str(self.radius) + str(self.saturation) + ".png"
+            )
             targetfile = os.path.join(BLUR_PATH, filename)
             if xbmcvfs.exists(targetfile):
                 touch_file(targetfile)
@@ -188,7 +195,7 @@ class ImageColorAnalyzer:
         if cache_key in ImageColorAnalyzer._memory_cache:
             return ImageColorAnalyzer._memory_cache[cache_key]
         try:
-            if not hasattr(ImageColorAnalyzer, '_loaded_cache'):
+            if not hasattr(ImageColorAnalyzer, "_loaded_cache"):
                 if os.path.exists(COLOR_CACHE_FILE):
                     with open(COLOR_CACHE_FILE, "r") as f:
                         ImageColorAnalyzer._loaded_cache = json.load(f)
@@ -219,18 +226,20 @@ class ImageColorAnalyzer:
             ImageColorAnalyzer._cache_dirty = True
             current_time = time.time()
             write_interval = 300  # 5 minutes between writes
-            if (len(ImageColorAnalyzer._pending_writes) >= 20 or 
-                    current_time - ImageColorAnalyzer._last_write_time > write_interval):
+            if (
+                len(ImageColorAnalyzer._pending_writes) >= 20
+                or current_time - ImageColorAnalyzer._last_write_time > write_interval
+            ):
                 self._flush_cache_to_disk()
         except Exception as e:
             xbmc.log(f"Error preparing cache: {str(e)}", 3)
-            
+
     def _flush_cache_to_disk(self):
         """Write the accumulated cache entries to disk"""
         if not ImageColorAnalyzer._cache_dirty:
             return
         try:
-            if not hasattr(ImageColorAnalyzer, '_loaded_cache'):
+            if not hasattr(ImageColorAnalyzer, "_loaded_cache"):
                 if os.path.exists(COLOR_CACHE_FILE):
                     with open(COLOR_CACHE_FILE, "r") as f:
                         ImageColorAnalyzer._loaded_cache = json.load(f)
@@ -250,7 +259,9 @@ class ImageColorAnalyzer:
     def process_image(self):
         """Process and blur image"""
         try:
-            filename = md5hash(self.image) + str(self.radius) + str(self.saturation) + ".png"
+            filename = (
+                md5hash(self.image) + str(self.radius) + str(self.saturation) + ".png"
+            )
             img = _openimage(self.image, ADDON_DATA_IMG_PATH, filename)
             if img:
                 img.thumbnail((200, 200), Image.LANCZOS)
@@ -291,12 +302,14 @@ class ImageColorAnalyzer:
                 sampled_pixels = pixels[::4]
                 color_bins = {}
                 for pixel in sampled_pixels:
-                    simple_color = (pixel[0]//10, pixel[1]//10, pixel[2]//10)
+                    simple_color = (pixel[0] // 10, pixel[1] // 10, pixel[2] // 10)
                     if simple_color in color_bins:
                         color_bins[simple_color] += 1
                     else:
                         color_bins[simple_color] = 1
-                sorted_colors = sorted(color_bins.items(), key=lambda x: x[1], reverse=True)
+                sorted_colors = sorted(
+                    color_bins.items(), key=lambda x: x[1], reverse=True
+                )
                 chosen_color = None
                 for color, _ in sorted_colors:
                     scaled_color = tuple(x * 10 for x in color)
@@ -336,7 +349,7 @@ class ImageColorAnalyzer:
         contrast_level = min(contrast_level, 1.0)
         brightness_level = (r + g + b) / (3 * 255)
         return contrast_level, brightness_level
-    
+
     def color(self, img):
         """Get dominant image color + best text contrasting color"""
         default_color = "FFCCCCCC"
@@ -381,18 +394,20 @@ class ImageColorAnalyzer:
                     img_resize = img.resize((100, new_height), Image.LANCZOS)
                 else:
                     img_resize = img
-                if img_resize.mode != 'RGB':
-                    img_resize = img_resize.convert('RGB')
+                if img_resize.mode != "RGB":
+                    img_resize = img_resize.convert("RGB")
                 pixels = list(img_resize.getdata())
                 sampled_pixels = pixels[::4]
                 color_bins = {}
                 for pixel in sampled_pixels:
-                    simple_color = (pixel[0]//10, pixel[1]//10, pixel[2]//10)
+                    simple_color = (pixel[0] // 10, pixel[1] // 10, pixel[2] // 10)
                     if simple_color in color_bins:
                         color_bins[simple_color] += 1
                     else:
                         color_bins[simple_color] = 1
-                sorted_colors = sorted(color_bins.items(), key=lambda x: x[1], reverse=True)
+                sorted_colors = sorted(
+                    color_bins.items(), key=lambda x: x[1], reverse=True
+                )
                 chosen_color = None
                 for color, _ in sorted_colors:
                     scaled_color = tuple(x * 10 for x in color)
@@ -469,16 +484,28 @@ class ImageColorAnalyzer:
     #     except Exception as e:
     #         xbmc.log(f"Error processing image colors: {str(e)}", 3)
     #     return default_color, default_text_color
-    
+
     def clear_video_properties(self, prop):
         is_playing_video = xbmc.getCondVisibility("Player.HasVideo")
         if not is_playing_video:
-            has_video_props = any([
-                xbmc.getInfoLabel(f"Window(Home).Property({prop}_clearlogo_cropped_video)") != "",
-                xbmc.getInfoLabel(f"Window(Home).Property({prop}_logo_color_video)") != "",
-                xbmc.getInfoLabel(f"Window(Home).Property({prop}_logo_text_color_video)") != "",
-                xbmc.getInfoLabel(f"Window(Home).Property({prop}_logo_color_alt_video)") != ""
-            ])
+            has_video_props = any(
+                [
+                    xbmc.getInfoLabel(
+                        f"Window(Home).Property({prop}_clearlogo_cropped_video)"
+                    )
+                    != "",
+                    xbmc.getInfoLabel(f"Window(Home).Property({prop}_logo_color_video)")
+                    != "",
+                    xbmc.getInfoLabel(
+                        f"Window(Home).Property({prop}_logo_text_color_video)"
+                    )
+                    != "",
+                    xbmc.getInfoLabel(
+                        f"Window(Home).Property({prop}_logo_color_alt_video)"
+                    )
+                    != "",
+                ]
+            )
             if has_video_props:
                 winprop(f"{prop}_clearlogo_cropped_video", "")
                 winprop(f"{prop}_logo_color_video", "")
@@ -491,7 +518,9 @@ def _openimage(image, targetpath, filename):
     cached_image_path = url_unquote(image.replace("image://", "")).rstrip("/")
     thumb_name = xbmc.getCacheThumbName(cached_image_path)
     cached_files = [
-        os.path.join("special://profile/Thumbnails/", thumb_name[0], f"{thumb_name[:-4]}.jpg"),
+        os.path.join(
+            "special://profile/Thumbnails/", thumb_name[0], f"{thumb_name[:-4]}.jpg"
+        ),
         os.path.join("special://profile/Thumbnails/Video/", thumb_name[0], thumb_name),
     ]
 
@@ -509,7 +538,11 @@ def _openimage(image, targetpath, filename):
             if img:
                 return img
     if xbmc.skinHasImage(image):
-        skin_path = image if image.startswith("special://skin") else os.path.join("special://skin/media/", image)
+        skin_path = (
+            image
+            if image.startswith("special://skin")
+            else os.path.join("special://skin/media/", image)
+        )
         img = safe_open_image(skin_path)
         if img:
             return img
@@ -524,4 +557,3 @@ def _openimage(image, targetpath, filename):
         if xbmcvfs.exists(temp_file):
             xbmcvfs.delete(temp_file)
     return ""
-
