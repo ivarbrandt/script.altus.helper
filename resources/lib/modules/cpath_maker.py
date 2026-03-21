@@ -81,7 +81,7 @@ main_include_dict = {
     "custom3": {"main_menu": None, "widget": "Custom3Widgets"},
 }
 widget_types = (
-    ("Spotlight", "WidgetListSpotlight"),
+    ("Flix (Small Poster)", "WidgetListSmallPosterFlix"),
     ("Feature Poster", "FeatureWidgetListPoster"),
     ("Feature Landscape", "FeatureWidgetListLandscape"),
     ("Poster", "WidgetListPoster"),
@@ -91,7 +91,7 @@ widget_types = (
     ("Category", "WidgetListCategory"),
 )
 stacked_widget_types = (
-    ("Spotlight", "WidgetListSpotlight"),
+    ("Flix (Small Poster)", "WidgetListSmallPosterFlix"),
     ("Feature Poster", "FeatureWidgetListPoster"),
     ("Feature Landscape", "FeatureWidgetListLandscape"),
     ("Poster", "WidgetListPoster"),
@@ -821,7 +821,7 @@ def starting_search_widgets():
     search_widgets = {
         26020: "$VAR[SearchProviderTRAKTListsVar]",
         26021: "$VAR[SearchProviderTRAKTListsMoviesVar]",
-        26022: "$VAR[SearchProviderTRAKTListsTVShowsVar]"
+        26022: "$VAR[SearchProviderTRAKTListsTVShowsVar]",
     }
     for widget_id, widget_path in search_widgets.items():
         try:
