@@ -81,22 +81,22 @@ main_include_dict = {
     "custom3": {"main_menu": None, "widget": "Custom3Widgets"},
 }
 widget_types = (
-    ("Flix (Small Poster)", "WidgetListSmallPosterFlix"),
     ("Feature Poster", "FeatureWidgetListPoster"),
     ("Feature Landscape", "FeatureWidgetListLandscape"),
     ("Poster", "WidgetListPoster"),
     ("Landscape", "WidgetListLandscape"),
     ("Small Poster", "SmallWidgetListPoster"),
+    ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
     ("Small Landscape", "SmallWidgetListLandscape"),
     ("Category", "WidgetListCategory"),
 )
 stacked_widget_types = (
-    ("Flix (Small Poster)", "WidgetListSmallPosterFlix"),
     ("Feature Poster", "FeatureWidgetListPoster"),
     ("Feature Landscape", "FeatureWidgetListLandscape"),
     ("Poster", "WidgetListPoster"),
     ("Landscape", "WidgetListLandscape"),
     ("Small Poster", "SmallWidgetListPoster"),
+    ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
     ("Small Landscape", "SmallWidgetListLandscape"),
 )
 default_path = "addons://sources/video"
