@@ -20,11 +20,6 @@ def routing():
 
         return widget_info_timer(_get("list_id"))
 
-    if mode == "spotlight_timer":
-        from modules.widget_utils import spotlight_timer
-
-        return spotlight_timer(_get("list_id"))
-    
     if mode == "wall_timer":
         from modules.widget_utils import wall_timer
 

@@ -92,7 +92,9 @@ def widget_monitor(list_id):
         if switch_widget:
             # position = int(xbmc.getInfoLabel("Container(%s).Position" % list_id))
             cpath_label = xbmc.getInfoLabel("ListItem.Label")
-            stack_label_control.setLabel("[COLOR unfocused_text]%s[/COLOR]" % cpath_label)
+            stack_label_control.setLabel(
+                "[COLOR unfocused_text]%s[/COLOR]" % cpath_label
+            )
             window.setProperty("altus.%s.label" % list_id, cpath_label)
             window.setProperty("altus.%s.path" % list_id, cpath_path)
             monitor.waitForAbort(0.2)
@@ -109,7 +111,10 @@ def widget_monitor(list_id):
             except:
                 pass
         else:
-            stack_label_control.setLabel("[COLOR unfocused_text]%s[/COLOR]" % window.getProperty("altus.%s.label" % list_id))
+            stack_label_control.setLabel(
+                "[COLOR unfocused_text]%s[/COLOR]"
+                % window.getProperty("altus.%s.label" % list_id)
+            )
             monitor.waitForAbort(0.25)
     try:
         del monitor
@@ -145,26 +150,3 @@ def widget_monitor(list_id):
 #         countdown -= 0.25
 #         if countdown <= 0:
 #             window.setProperty(f"WidgetInfo.Timer.Complete.{list_id}", "true")
-
-
-def spotlight_timer(list_id):
-    monitor = xbmc.Monitor()
-    try:
-        delay = float(xbmc.getInfoLabel("Skin.String(altus_spotlight_delay)"))
-    except (ValueError, TypeError):
-        delay = 10
-    last_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
-    countdown = delay
-    while not monitor.abortRequested():
-        if monitor.waitForAbort(0.25):
-            break
-        if not xbmc.getCondVisibility(f"Control.HasFocus({list_id})"):
-            break
-        current_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
-        if current_item != last_item:
-            last_item = current_item
-            countdown = delay
-            continue
-        countdown -= 0.25
-        if countdown <= 0:
-            xbmc.executebuiltin("Action(right)")
