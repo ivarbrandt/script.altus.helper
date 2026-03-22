@@ -81,23 +81,25 @@ main_include_dict = {
     "custom3": {"main_menu": None, "widget": "Custom3Widgets"},
 }
 widget_types = (
-    ("Feature Poster", "FeatureWidgetListPoster"),
-    ("Feature Landscape", "FeatureWidgetListLandscape"),
+    ("Big Poster", "WidgetListBigPoster"),
     ("Poster", "WidgetListPoster"),
-    ("Landscape", "WidgetListLandscape"),
-    ("Small Poster", "SmallWidgetListPoster"),
+    ("Small Poster", "WidgetListSmallPoster"),
     ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
-    ("Small Landscape", "SmallWidgetListLandscape"),
+    ("Landscape", "WidgetListLandscape"),
+    ("Landscape - Flix", "WidgetListLandscapeFlix"),
+    ("Small Landscape", "WidgetListSmallLandscape"),
+    ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
     ("Category", "WidgetListCategory"),
 )
 stacked_widget_types = (
-    ("Feature Poster", "FeatureWidgetListPoster"),
-    ("Feature Landscape", "FeatureWidgetListLandscape"),
+    ("Big Poster", "WidgetListBigPoster"),
     ("Poster", "WidgetListPoster"),
-    ("Landscape", "WidgetListLandscape"),
-    ("Small Poster", "SmallWidgetListPoster"),
+    ("Small Poster", "WidgetListSmallPoster"),
     ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
-    ("Small Landscape", "SmallWidgetListLandscape"),
+    ("Landscape", "WidgetListLandscape"),
+    ("Landscape - Flix", "WidgetListLandscapeFlix"),
+    ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
+    ("Small Landscape", "WidgetListSmallLandscape"),
 )
 default_path = "addons://sources/video"
 
@@ -430,7 +432,7 @@ class CPaths:
     #     return widget_types[choice]
 
     def widget_type(
-        self, label="Choose widget display type", type_limit=8, types=widget_types
+        self, label="Choose widget display type", type_limit=9, types=widget_types
     ):
         choice = dialog.select(label, [i[0] for i in types[0:type_limit]])
         if choice == -1:
