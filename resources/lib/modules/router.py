@@ -40,10 +40,42 @@ def routing():
 
         return check_for_profile_change(_get("skin_id"))
 
-    if mode == "starting_widgets":
-        from modules.cpath_maker import starting_widgets
+    if mode == "run_migration":
+        from modules.widget_manager.migration import migrate
 
-        return starting_widgets()
+        return migrate()
+
+    if mode == "generate_xml":
+        from modules.widget_manager.xml_generator import generate_and_reload
+
+        return generate_and_reload()
+
+    if mode == "migrate_and_generate":
+        from modules.widget_manager.migration import migrate
+        from modules.widget_manager.default_config import create_default_sections
+        from modules.widget_manager.xml_generator import generate_and_reload
+
+        if not migrate():
+            create_default_sections()
+        return generate_and_reload()
+
+    if mode == "create_default_sections":
+        from modules.widget_manager.default_config import create_default_sections
+
+        return create_default_sections()
+
+    if mode == "open_widget_manager":
+        from modules.widget_manager.manager_window import open_manager
+
+        return open_manager()
+
+    if mode == "starting_widgets":
+        from modules.widget_manager.config_manager import ConfigManager
+        from modules.widget_manager.xml_generator import _init_stacked_widgets
+        cm = ConfigManager()
+        config = cm.get_full_config()
+        cm.close()
+        return _init_stacked_widgets(config)
 
     if mode == "manage_widgets":
         from modules.cpath_maker import CPaths
