@@ -25,7 +25,6 @@ def widget_monitor(list_id):
         == "True"
     )
     stack_id = list_id + "1"
-    # poster_toggle, landscape_toggle = True, False
     while not monitor.abortRequested():
         window_id = xbmcgui.getCurrentWindowId()
         if window_id not in [10000, 11121]:
@@ -34,17 +33,6 @@ def widget_monitor(list_id):
             window = xbmcgui.Window(window_id)
             home_window = xbmcgui.Window(10000)
             stack_control = window.getControl(int(stack_id))
-            stack_label_control = (
-                window.getControl(int(stack_id + "666"))
-                or window.getControl(int(stack_id + "667"))
-                or window.getControl(int(stack_id + "668"))
-                or window.getControl(int(stack_id + "669"))
-                or window.getControl(int(stack_id + "670"))
-                or window.getControl(int(stack_id + "671"))
-                or window.getControl(int(stack_id + "672"))
-                or window.getControl(int(stack_id + "673"))
-                or window.getControl(int(stack_id + "674"))
-            )
             try:
                 countdown_label = window.getControl(int(list_id + "999"))
             except:
@@ -90,11 +78,7 @@ def widget_monitor(list_id):
                     pass
         home_window.clearProperty("altus.countdown_active")
         if switch_widget:
-            # position = int(xbmc.getInfoLabel("Container(%s).Position" % list_id))
             cpath_label = xbmc.getInfoLabel("ListItem.Label")
-            stack_label_control.setLabel(
-                "[COLOR unfocused_text]%s[/COLOR]" % cpath_label
-            )
             window.setProperty("altus.%s.label" % list_id, cpath_label)
             window.setProperty("altus.%s.path" % list_id, cpath_path)
             monitor.waitForAbort(0.2)
@@ -111,10 +95,6 @@ def widget_monitor(list_id):
             except:
                 pass
         else:
-            stack_label_control.setLabel(
-                "[COLOR unfocused_text]%s[/COLOR]"
-                % window.getProperty("altus.%s.label" % list_id)
-            )
             monitor.waitForAbort(0.25)
     try:
         del monitor
@@ -125,28 +105,3 @@ def widget_monitor(list_id):
         del home_window
     except:
         pass
-
-
-# def widget_info_timer(list_id):
-#     monitor = xbmc.Monitor()
-#     window = xbmcgui.Window(xbmcgui.getCurrentWindowId())
-#     try:
-#         delay = float(xbmc.getInfoLabel("Skin.String(altus_widget_autoinfo_delay)"))
-#     except (ValueError, TypeError):
-#         delay = 750
-#     delay_seconds = delay / 1000
-#     last_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
-#     countdown = delay_seconds
-#     while not monitor.abortRequested():
-#         if monitor.waitForAbort(0.25):
-#             break
-#         if not xbmc.getCondVisibility(f"Control.HasFocus({list_id})"):
-#             break
-#         current_item = xbmc.getInfoLabel(f"Container({list_id}).ListItem.Label")
-#         if current_item != last_item:
-#             last_item = current_item
-#             countdown = delay_seconds
-#             continue
-#         countdown -= 0.25
-#         if countdown <= 0:
-#             window.setProperty(f"WidgetInfo.Timer.Complete.{list_id}", "true")

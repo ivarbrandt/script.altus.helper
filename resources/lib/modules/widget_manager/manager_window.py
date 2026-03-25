@@ -23,9 +23,8 @@ DISPLAY_TYPE_MAP = {
     "WidgetListCategory": "Category",
     "WidgetListCategoryStacked": "Category (Stacked)",
     "WidgetListSquare": "Square",
-    "WidgetListSquareNoInfo": "Square (No Info)",
     "WidgetListPVR": "PVR",
-    "WidgetListCategoryOther": "Category (Other)",
+    "WidgetListCategoryOther": "Categories",
 }
 
 # Selectable display types (tuples of friendly, internal)
@@ -52,12 +51,79 @@ STACKED_DISPLAY_TYPES = [
     ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
 ]
 
+PVR_DISPLAY_TYPES = [
+    ("PVR", "WidgetListPVR"),
+    ("Square", "WidgetListSquare"),
+    ("Category", "WidgetListCategoryOther"),
+]
+
+MUSIC_DISPLAY_TYPES = [
+    ("Square", "WidgetListSquare"),
+    ("Category", "WidgetListCategoryOther"),
+]
+
+ADDON_DISPLAY_TYPES = [
+    ("Square", "WidgetListSquare"),
+]
+
+PICTURE_DISPLAY_TYPES = [
+    ("Category", "WidgetListCategoryOther"),
+]
+
+GAME_DISPLAY_TYPES = [
+    ("Square", "WidgetListSquare"),
+]
+
+PROGRAM_DISPLAY_TYPES = [
+    ("Square", "WidgetListSquare"),
+]
+
 TARGET_TYPES = ["videos", "music", "programs", "files"]
 
+
+def _get_display_types_for_widget(widget):
+    """Return the appropriate (name, internal) display type list for a widget."""
+    path = widget.get("path", "")
+    target = widget.get("target", "")
+    if path.startswith("pvr://"):
+        return PVR_DISPLAY_TYPES
+    if path.startswith("addons://") or path.startswith("androidapp://"):
+        return ADDON_DISPLAY_TYPES
+    if path.startswith("favourites://"):
+        return ADDON_DISPLAY_TYPES
+    if path.startswith("musicdb://") or path.startswith("library://music/"):
+        return MUSIC_DISPLAY_TYPES
+    if target == "music":
+        return MUSIC_DISPLAY_TYPES
+    if path.startswith("sources://pictures/") or target == "pictures":
+        return PICTURE_DISPLAY_TYPES
+    if target == "games":
+        return GAME_DISPLAY_TYPES
+    if target == "programs":
+        return PROGRAM_DISPLAY_TYPES
+    # Video content — all types available
+    return WIDGET_DISPLAY_TYPES
+
 SORT_BY_TYPES = [
-    "none", "label", "title", "date", "year", "rating", "genre",
-    "artist", "album", "track", "duration", "lastplayed", "dateadded",
-    "episode", "season", "totalepisodes", "playcount", "random",
+    "none",
+    "label",
+    "title",
+    "date",
+    "year",
+    "rating",
+    "genre",
+    "artist",
+    "album",
+    "track",
+    "duration",
+    "lastplayed",
+    "lastused",
+    "dateadded",
+    "episode",
+    "season",
+    "totalepisodes",
+    "playcount",
+    "random",
 ]
 
 SORT_ORDER_TYPES = ["ascending", "descending"]
@@ -69,17 +135,26 @@ DETAIL_GROUPLIST = 5001
 DETAIL_LABEL = 5100
 DETAIL_DISPLAY_TYPE = 5101
 DETAIL_PATH = 5102
-DETAIL_TARGET = 5103
-DETAIL_STACKED = 5104
+DETAIL_STACKED = 5103
+DETAIL_TARGET = 5104
 DETAIL_STACKED_TYPE = 5105
 DETAIL_LIMIT = 5106
 DETAIL_SORTBY = 5107
 DETAIL_SORTORDER = 5108
 ADD_WIDGET_BTN = 4500
-DETAIL_CONTROLS = frozenset((
-    DETAIL_GROUPLIST, DETAIL_LABEL, DETAIL_DISPLAY_TYPE, DETAIL_PATH,
-    DETAIL_TARGET, DETAIL_STACKED, DETAIL_LIMIT, DETAIL_SORTBY, DETAIL_SORTORDER,
-))
+DETAIL_CONTROLS = frozenset(
+    (
+        DETAIL_GROUPLIST,
+        DETAIL_LABEL,
+        DETAIL_DISPLAY_TYPE,
+        DETAIL_PATH,
+        DETAIL_STACKED,
+        DETAIL_TARGET,
+        DETAIL_LIMIT,
+        DETAIL_SORTBY,
+        DETAIL_SORTORDER,
+    )
+)
 
 # Kodi action IDs
 ACTION_MOVE_LEFT = 1
@@ -399,7 +474,11 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         )
         # Determine insert position (after current selection)
         current = self._get_selected_section_id()
-        current_idx = self.section_ids.index(current) if current and current in self.section_ids else len(self.section_ids) - 1
+        current_idx = (
+            self.section_ids.index(current)
+            if current and current in self.section_ids
+            else len(self.section_ids) - 1
+        )
         pos_after = None
         if current and current in self.config:
             pos_after = self.config[current]["section"]["position"]
@@ -493,15 +572,22 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             return
         internal_type = result.get("display_type")
         if internal_type is None:
-            # Video content — prompt user for display type
-            names = [t[0] for t in WIDGET_DISPLAY_TYPES]
+            # Auto-assign didn't resolve — prompt with filtered types
+            types = _get_display_types_for_widget(
+                {"path": path, "target": target}
+            )
+            names = [t[0] for t in types]
             idx = self._select("Display Type", names)
             if idx is None or idx < 0:
                 return
-            internal_type = WIDGET_DISPLAY_TYPES[idx][1]
+            internal_type = types[idx][1]
         # Determine insert position (after current widget)
         current_wid = self._get_selected_widget_id()
-        current_idx = self.widget_ids.index(current_wid) if current_wid and current_wid in self.widget_ids else len(self.widget_ids) - 1
+        current_idx = (
+            self.widget_ids.index(current_wid)
+            if current_wid and current_wid in self.widget_ids
+            else len(self.widget_ids) - 1
+        )
         pos_after = None
         if current_wid:
             widget = self.cm.get_widget(current_wid)
@@ -570,20 +656,22 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             if widget["is_stacked"]:
                 # Stacked widget: display_type is locked to CategoryStacked,
                 # so change the child type (stacked_type) instead
-                names = [t[0] for t in STACKED_DISPLAY_TYPES]
+                types = STACKED_DISPLAY_TYPES
+                names = [t[0] for t in types]
                 idx = self._select("Display Type", names)
                 if idx is None or idx < 0:
                     return
-                new_val = STACKED_DISPLAY_TYPES[idx][1]
+                new_val = types[idx][1]
                 self.cm.update_widget(wid, stacked_type=new_val)
                 self.changed = True
                 self._update_widget_item_in_place(wid)
                 return
-            names = [t[0] for t in WIDGET_DISPLAY_TYPES]
+            types = _get_display_types_for_widget(widget)
+            names = [t[0] for t in types]
             idx = self._select("Display Type", names)
             if idx is None or idx < 0:
                 return
-            new_val = WIDGET_DISPLAY_TYPES[idx][1]
+            new_val = types[idx][1]
         elif field == "target":
             idx = self._select("Target", TARGET_TYPES)
             if idx is None or idx < 0:
@@ -827,10 +915,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self._edit_widget_field("display_type", control_id)
         elif control_id == DETAIL_PATH:
             self._edit_widget_field("path", control_id)
-        elif control_id == DETAIL_TARGET:
-            self._edit_widget_field("target", control_id)
         elif control_id == DETAIL_STACKED:
             self._edit_widget_field("is_stacked", control_id)
+        elif control_id == DETAIL_TARGET:
+            self._edit_widget_field("target", control_id)
         elif control_id == DETAIL_LIMIT:
             self._edit_widget_field("limit_num", control_id)
         elif control_id == DETAIL_SORTBY:
@@ -941,9 +1029,16 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         a.setLabel2(l2b)
         b.setLabel2(l2a)
         for prop in (
-            "widget_id", "widget_label", "display_type", "widget_path",
-            "target", "is_stacked", "stacked_type", "limit_num",
-            "sortby", "sortorder",
+            "widget_id",
+            "widget_label",
+            "display_type",
+            "widget_path",
+            "target",
+            "is_stacked",
+            "stacked_type",
+            "limit_num",
+            "sortby",
+            "sortorder",
         ):
             va, vb = a.getProperty(prop), b.getProperty(prop)
             a.setProperty(prop, vb)

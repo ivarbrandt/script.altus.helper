@@ -59,9 +59,23 @@ def _build_widget_xml(widget, list_id):
     return xml
 
 
+def _resolve_stacked_child_type(stacked_type):
+    """Resolve the child include name for a stacked widget.
+
+    All stacked children need a 'Stacked' suffix appended to their base type.
+    e.g. WidgetListSmallPoster → WidgetListSmallPosterStacked
+         WidgetListSmallPosterFlix → WidgetListSmallPosterFlixStacked
+    Already-suffixed types are left unchanged.
+    """
+    if stacked_type.endswith("Stacked"):
+        return stacked_type
+    return stacked_type + "Stacked"
+
+
 def _build_stacked_widget_xml(widget, list_id):
     """Generate XML for a stacked widget (parent category + child content)."""
     child_id = "%s1" % list_id
+    child_type = _resolve_stacked_child_type(widget["stacked_type"])
     return """
     <include content="WidgetListCategoryStacked">
       <param name="content_path" value="{path}"/>
@@ -70,7 +84,7 @@ def _build_stacked_widget_xml(widget, list_id):
       <param name="list_id" value="{list_id}"/>
       <param name="child_id" value="{child_id}"/>
     </include>
-    <include content="{stacked_type}">
+    <include content="{child_type}">
       <param name="content_path" value="$INFO[Window(Home).Property(altus.{list_id}.path)]"/>
       <param name="widget_header" value="$INFO[Window(Home).Property(altus.{list_id}.label)]"/>
       <param name="widget_target" value="{target}"/>
@@ -82,7 +96,7 @@ def _build_stacked_widget_xml(widget, list_id):
         target=widget["target"],
         list_id=list_id,
         child_id=child_id,
-        stacked_type=widget["stacked_type"],
+        child_type=child_type,
     )
 
 

@@ -6,35 +6,116 @@ games, pictures, favourites, and more.
 """
 import json
 import xbmc
+import xbmcaddon
 import xbmcgui
 
 dialog = xbmcgui.Dialog()
 ListItem = xbmcgui.ListItem
+SKIN_PATH = xbmcaddon.Addon("skin.altus").getAddonInfo("path")
+
+ACTION_MOVE_LEFT = 1
+ACTION_PREVIOUS_MENU = 10
+ACTION_NAV_BACK = 92
+
+
+class _PathSelectDialog(xbmcgui.WindowXMLDialog):
+    """Custom select dialog that distinguishes back from cancel."""
+
+    RESULT_CANCEL = -1
+    RESULT_BACK = -2
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.items = []
+        self.heading = ""
+        self.result = self.RESULT_CANCEL
+
+    def onInit(self):
+        if self.heading:
+            try:
+                self.getControl(1).setLabel(self.heading)
+            except Exception:
+                pass
+        # Hide unused button (OK=5), repurpose Extra=8, keep Cancel=7
+        try:
+            self.getControl(5).setVisible(False)
+        except Exception:
+            pass
+        try:
+            self.getControl(8).setLabel("Multi-select")
+        except Exception:
+            pass
+        # Fix navigation: list 6 ↔ scrollbar 61 ↔ cancel 7
+        try:
+            lst6 = self.getControl(6)
+            scrollbar = self.getControl(61)
+            cancel = self.getControl(7)
+            scrollbar.setNavigation(scrollbar, scrollbar, lst6, cancel)
+            cancel.setNavigation(cancel, cancel, lst6, lst6)
+        except Exception:
+            pass
+        lst = self.getControl(6)
+        lst.reset()
+        for item in self.items:
+            lst.addItem(item)
+        self.setFocusId(6)
+
+    def onAction(self, action):
+        action_id = action.getId()
+        if action_id == ACTION_NAV_BACK:
+            self.result = self.RESULT_BACK
+            self.close()
+        elif action_id == ACTION_PREVIOUS_MENU:
+            self.result = self.RESULT_CANCEL
+            self.close()
+        elif action_id == ACTION_MOVE_LEFT:
+            if self.getFocusId() in (7, 8, 61):
+                self.setFocusId(6)
+
+    def onFocus(self, controlId):
+        # Block list from navigating to grouplist/scrollbar via XML onleft
+        if controlId in (9001, 61):
+            self.setFocusId(6)
+
+    def onClick(self, controlId):
+        if controlId == 6:
+            self.result = self.getControl(6).getSelectedPosition()
+            self.close()
+        elif controlId == 7:
+            self.result = self.RESULT_CANCEL
+            self.close()
+
 
 # ── Root categories ──
 
 ROOT_CATEGORIES = [
+    ("Addons", "__addons__", "videos"),
+    ("Library", "__library__", "videos"),
+    ("PVR", "__pvr__", "videos"),
+    ("Playlists", "__playlists__", "videos"),
+    ("Sources", "__sources__", "videos"),
+    ("Favourites", "favourites://", "videos"),
+    ("Games", "__games__", "games"),
+]
+
+# ── Addon sub-menus ──
+
+ADDON_NODES = [
     ("Video Addons", "addons://sources/video", "videos"),
     ("Music Addons", "addons://sources/music", "music"),
     ("Program Addons", "addons://sources/executable", "programs"),
     ("Picture Addons", "addons://sources/image", "pictures"),
     ("Game Addons", "addons://sources/game", "games"),
-    ("Video Library", "__video_library__", "videos"),
-    ("Music Library", "__music_library__", "music"),
-    ("Live TV (PVR)", "__pvr_tv__", "videos"),
-    ("Radio (PVR)", "__pvr_radio__", "music"),
-    ("Pictures", "__pictures__", "pictures"),
-    ("Games", "__games__", "games"),
-    ("Video Playlists", "special://profile/playlists/video/", "videos"),
-    ("Music Playlists", "special://profile/playlists/music/", "music"),
-    ("Skin Playlists", "__skin_playlists__", "videos"),
-    ("Video Sources", "sources://video/", "videos"),
-    ("Music Sources", "sources://music/", "music"),
-    ("Favourites", "favourites://", "videos"),
     ("Installed Addons", "__installed_addons__", "addons"),
 ]
 
 # ── Library sub-menus ──
+
+LIBRARY_NODES = [
+    ("Video Library", "__video_library__", "videos"),
+    ("Music Library", "__music_library__", "music"),
+    ("Pictures", "__pictures__", "pictures"),
+]
 
 VIDEO_LIBRARY_NODES = [
     ("Movies", "videodb://movies/titles/"),
@@ -85,6 +166,11 @@ MUSIC_LIBRARY_NODES = [
 
 # ── PVR sub-menus ──
 
+PVR_NODES = [
+    ("Live TV", "__pvr_tv__", "videos"),
+    ("Radio", "__pvr_radio__", "music"),
+]
+
 PVR_TV_NODES = [
     ("TV Categories", "pvr://tv/"),
     ("TV Channels (Last Played)", "pvr://channels/tv/*?view=lastplayed"),
@@ -111,6 +197,22 @@ PICTURES_NODES = [
     ("Picture Sources", "sources://pictures/"),
 ]
 
+# ── Playlists sub-menu ──
+
+PLAYLIST_NODES = [
+    ("Video Playlists", "special://profile/playlists/video/", "videos"),
+    ("Music Playlists", "special://profile/playlists/music/", "music"),
+    ("Skin Playlists", "__skin_playlists__", "videos"),
+]
+
+# ── Sources sub-menu ──
+
+SOURCES_NODES = [
+    ("Video Sources", "sources://video/", "videos"),
+    ("Music Sources", "sources://music/", "music"),
+    ("Picture Sources", "sources://pictures/", "pictures"),
+]
+
 # ── Games sub-menu ──
 
 GAMES_NODES = [
@@ -125,7 +227,10 @@ SKIN_PLAYLIST_NODES = [
     ("Unplayed Albums", "special://skin/playlists/unplayed_albums.xsp"),
     ("Most Played Albums", "special://skin/playlists/mostplayed_albums.xsp"),
     ("Unwatched Music Videos", "special://skin/playlists/unwatched_musicvideos.xsp"),
-    ("Random Music Video Artists", "special://skin/playlists/random_musicvideo_artists.xsp"),
+    (
+        "Random Music Video Artists",
+        "special://skin/playlists/random_musicvideo_artists.xsp",
+    ),
     ("Random Music Videos", "special://skin/playlists/random_musicvideos.xsp"),
 ]
 
@@ -146,6 +251,11 @@ INSTALLED_ADDONS_NODES = [
 # ── Submenu routing ──
 
 _SUBMENU_MAP = {
+    "__addons__": ADDON_NODES,
+    "__library__": LIBRARY_NODES,
+    "__pvr__": PVR_NODES,
+    "__playlists__": PLAYLIST_NODES,
+    "__sources__": SOURCES_NODES,
     "__video_library__": VIDEO_LIBRARY_NODES,
     "__music_library__": MUSIC_LIBRARY_NODES,
     "__pvr_tv__": PVR_TV_NODES,
@@ -257,15 +367,15 @@ def _auto_display_type(path, target):
             return "WidgetListCategoryOther"
         # Channel groups (for guide-style display)
         if path in ("pvr://channels/tv", "pvr://channels/radio"):
-            return "WidgetListSquareNoInfo"
+            return "WidgetListSquare"
         # Channels, recordings, timers → PVR layout
         return "WidgetListPVR"
     # Addon / installed addon paths → Square
     if path.startswith("addons://") or path.startswith("androidapp://"):
-        return "WidgetListSquareNoInfo"
+        return "WidgetListSquare"
     # Favourites → Square
     if path.startswith("favourites://"):
-        return "WidgetListSquareNoInfo"
+        return "WidgetListSquare"
     # Music library content → Square (album/artist artwork is square)
     if path.startswith("musicdb://"):
         return "WidgetListSquare"
@@ -283,7 +393,7 @@ def _auto_display_type(path, target):
         return "WidgetListSquare"
     # Programs → Square
     if target == "programs":
-        return "WidgetListSquareNoInfo"
+        return "WidgetListSquare"
     # Video library/source root paths → Category Other
     if path in ("library://video/", "library://video/musicvideos/"):
         return "WidgetListCategoryOther"
@@ -304,14 +414,22 @@ def _browse_submenu(nodes, target):
     label, path = node[0], node[1]
     # 3-tuple nodes have their own target override
     node_target = node[2] if len(node) > 2 else target
-    # Direct-return paths — these are used as widget content paths, not browsed into
-    # Only library/source paths need recursive browsing
+    # Check if this node leads to another submenu (multi-level nesting)
+    sub_nodes = _SUBMENU_MAP.get(path)
+    if sub_nodes is not None:
+        return _browse_submenu(sub_nodes, node_target)
+    # Paths that should be browsed into via _browse_path
     browsable = (
         path.startswith("videodb://")
         or path.startswith("musicdb://")
         or path.startswith("library://")
         or path.startswith("sources://")
         or path.startswith("special://profile/playlists/")
+        or path.startswith("addons://")
+        or path.startswith("pvr://")
+        or path.startswith("plugin://")
+        or path.startswith("favourites://")
+        or path.startswith("androidapp://")
     )
     if not browsable:
         return {"label": label, "path": path, "thumbnail": "", "target": node_target}
@@ -323,68 +441,149 @@ def _browse_submenu(nodes, target):
 
 def _browse_path(path, label="", thumbnail=""):
     """
-    Recursively browse a path via JSON-RPC Files.GetDirectory.
+    Browse a path via JSON-RPC Files.GetDirectory with a navigation stack.
     Returns dict {"label", "path", "thumbnail"} or None.
     """
-    _show_busy()
-    results = _get_directory(path)
-    _hide_busy()
-    if results is None:
-        results = []
-    items = []
-    is_addon_root = path.startswith("addons://sources/") or path == "addons://"
-    # "Use this path" option (skip for addon source roots)
-    if not is_addon_root:
-        use_label = _clean(label) or path
-        li = ListItem(
-            "[B]%s[/B]" % use_label,
-            "Use as widget path",
-            offscreen=True,
+    # Stack of (path, label, thumbnail) for back navigation
+    stack = []
+    cur_path, cur_label, cur_thumb = path, label, thumbnail
+    while True:
+        _show_busy()
+        results = _get_directory(cur_path) or []
+        _hide_busy()
+        items = []
+        is_addon_root = (
+            cur_path.startswith("addons://sources/") or cur_path == "addons://"
         )
-        if thumbnail:
-            li.setArt({"icon": thumbnail})
-        li.setProperty(
-            "item",
-            json.dumps({"label": label, "path": path, "thumbnail": thumbnail}),
-        )
-        items.append(li)
-    for r in results:
-        clean = _clean(r["label"])
-        li = ListItem("%s" % clean, "Browse path...", offscreen=True)
-        if r.get("thumbnail"):
-            li.setArt({"icon": r["thumbnail"]})
-        li.setProperty(
-            "item",
-            json.dumps(
-                {
-                    "label": r["label"],
-                    "path": r["file"],
-                    "thumbnail": r.get("thumbnail", ""),
-                }
-            ),
-        )
-        items.append(li)
-    if not items:
-        # Nothing browsable and no "use" option — return path directly
-        return {"label": _clean(label), "path": path, "thumbnail": thumbnail}
-    choice = dialog.select("Choose path", items, useDetails=True)
-    if choice < 0:
-        return None
-    selected = json.loads(items[choice].getProperty("item"))
-    if selected["path"] == path:
-        # User chose "Use as path"
-        selected["label"] = _clean(selected["label"])
-        return selected
-    # Browse deeper
-    return _browse_path(
-        path=selected["path"],
-        label=selected["label"],
-        thumbnail=selected.get("thumbnail", ""),
-    )
+        # "Use this path" option (skip for addon source roots)
+        if not is_addon_root:
+            use_label = _clean(cur_label) or cur_path
+            li = ListItem(
+                "[B]%s[/B]" % use_label,
+                "Use as widget path",
+                offscreen=True,
+            )
+            if cur_thumb:
+                li.setArt({"icon": cur_thumb})
+            li.setProperty(
+                "item",
+                json.dumps(
+                    {"label": cur_label, "path": cur_path, "thumbnail": cur_thumb}
+                ),
+            )
+            items.append(li)
+        # Separate directories, file items, and next-page entries
+        dirs = []
+        next_pages = []
+        file_items = []
+        for r in results:
+            if r.get("filetype") == "directory":
+                raw = r.get("label", "")
+                if _is_next_page(raw):
+                    next_pages.append(r)
+                else:
+                    dirs.append(r)
+            else:
+                file_items.append(r)
+        # Show directories first (browsable)
+        for r in dirs:
+            clean = _clean(r["label"])
+            li = ListItem("%s" % clean, "Browse path...", offscreen=True)
+            if r.get("thumbnail"):
+                li.setArt({"icon": r["thumbnail"]})
+            li.setProperty(
+                "item",
+                json.dumps(
+                    {
+                        "label": r["label"],
+                        "path": r["file"],
+                        "thumbnail": r.get("thumbnail", ""),
+                        "filetype": "directory",
+                    }
+                ),
+            )
+            items.append(li)
+        # Then show content items (non-browsable)
+        for r in file_items:
+            clean = _clean(r["label"])
+            file_path = r.get("file", "")
+            li = ListItem("%s" % clean, file_path, offscreen=True)
+            if r.get("thumbnail"):
+                li.setArt({"icon": r["thumbnail"]})
+            li.setProperty(
+                "item",
+                json.dumps(
+                    {
+                        "label": r["label"],
+                        "path": file_path,
+                        "thumbnail": r.get("thumbnail", ""),
+                        "filetype": "file",
+                    }
+                ),
+            )
+            items.append(li)
+        # Next page at the bottom
+        for r in next_pages:
+            clean = _clean(r["label"])
+            li = ListItem(
+                "[B]%s[/B]" % (clean or "Next page"), "Load more...", offscreen=True
+            )
+            if r.get("thumbnail"):
+                li.setArt({"icon": r["thumbnail"]})
+            li.setProperty(
+                "item",
+                json.dumps(
+                    {
+                        "label": r["label"],
+                        "path": r["file"],
+                        "thumbnail": r.get("thumbnail", ""),
+                        "filetype": "directory",
+                    }
+                ),
+            )
+            items.append(li)
+        if not items:
+            # Nothing at all — return path directly
+            return {
+                "label": _clean(cur_label),
+                "path": cur_path,
+                "thumbnail": cur_thumb,
+            }
+        dlg = _PathSelectDialog("DialogSelect.xml", SKIN_PATH, "default", "1080i")
+        dlg.heading = "Choose path"
+        dlg.items = items
+        dlg.doModal()
+        choice = dlg.result
+        del dlg
+        if choice == _PathSelectDialog.RESULT_CANCEL:
+            return None
+        if choice == _PathSelectDialog.RESULT_BACK:
+            if stack:
+                cur_path, cur_label, cur_thumb = stack.pop()
+            else:
+                return None
+            continue
+        selected = json.loads(items[choice].getProperty("item"))
+        if selected["path"] == cur_path:
+            # User chose "Use as path"
+            selected["label"] = _clean(selected["label"])
+            return selected
+        if selected.get("filetype") == "file":
+            # Content item selected — re-show the same directory
+            continue
+        # Directory — push current onto stack and browse into it
+        stack.append((cur_path, cur_label, cur_thumb))
+        cur_path = selected["path"]
+        cur_label = selected["label"]
+        cur_thumb = selected.get("thumbnail", "")
 
 
 def _get_directory(path):
-    """Fetch browsable subdirectories from a Kodi path via JSON-RPC."""
+    """Fetch all items from a Kodi path via JSON-RPC.
+
+    Returns a list of dicts, each with a 'filetype' key ('directory' or 'file')
+    so callers can distinguish browsable folders from content items.
+    """
     command = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -400,16 +599,22 @@ def _get_directory(path):
         files = response.get("result", {}).get("files") or []
     except Exception:
         return []
-    # Addon paths: only show plugin:// directories
+    # Addon paths: only show plugin:// entries
     if path.startswith("plugin://") or path.startswith("addons://"):
-        return [
-            f
-            for f in files
-            if f.get("file", "").startswith("plugin://")
-            and f.get("filetype") == "directory"
-        ]
-    # All other paths: show any directory entries
-    return [f for f in files if f.get("filetype") == "directory"]
+        return [f for f in files if f.get("file", "").startswith("plugin://")]
+    return files
+
+
+def _is_next_page(raw_label):
+    """Detect pagination entries from Kodi addons."""
+    low = raw_label.lower().replace("[b]", "").replace("[/b]", "").strip()
+    if "next page" in low or "next >>" in low:
+        return True
+    # Matches labels like ">> Next", ">>", or ending with ">>"
+    stripped = raw_label.rstrip()
+    if stripped.endswith(">>"):
+        return True
+    return False
 
 
 def _clean(label):
