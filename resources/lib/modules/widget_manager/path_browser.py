@@ -6,85 +6,10 @@ games, pictures, favourites, and more.
 """
 import json
 import xbmc
-import xbmcaddon
 import xbmcgui
 
 dialog = xbmcgui.Dialog()
 ListItem = xbmcgui.ListItem
-SKIN_PATH = xbmcaddon.Addon("skin.altus").getAddonInfo("path")
-
-ACTION_MOVE_LEFT = 1
-ACTION_PREVIOUS_MENU = 10
-ACTION_NAV_BACK = 92
-
-
-class _PathSelectDialog(xbmcgui.WindowXMLDialog):
-    """Custom select dialog that distinguishes back from cancel."""
-
-    RESULT_CANCEL = -1
-    RESULT_BACK = -2
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.items = []
-        self.heading = ""
-        self.result = self.RESULT_CANCEL
-
-    def onInit(self):
-        if self.heading:
-            try:
-                self.getControl(1).setLabel(self.heading)
-            except Exception:
-                pass
-        # Hide unused button (OK=5), repurpose Extra=8, keep Cancel=7
-        try:
-            self.getControl(5).setVisible(False)
-        except Exception:
-            pass
-        try:
-            self.getControl(8).setLabel("Multi-select")
-        except Exception:
-            pass
-        # Fix navigation: list 6 ↔ scrollbar 61 ↔ cancel 7
-        try:
-            lst6 = self.getControl(6)
-            scrollbar = self.getControl(61)
-            cancel = self.getControl(7)
-            scrollbar.setNavigation(scrollbar, scrollbar, lst6, cancel)
-            cancel.setNavigation(cancel, cancel, lst6, lst6)
-        except Exception:
-            pass
-        lst = self.getControl(6)
-        lst.reset()
-        for item in self.items:
-            lst.addItem(item)
-        self.setFocusId(6)
-
-    def onAction(self, action):
-        action_id = action.getId()
-        if action_id == ACTION_NAV_BACK:
-            self.result = self.RESULT_BACK
-            self.close()
-        elif action_id == ACTION_PREVIOUS_MENU:
-            self.result = self.RESULT_CANCEL
-            self.close()
-        elif action_id == ACTION_MOVE_LEFT:
-            if self.getFocusId() in (7, 8, 61):
-                self.setFocusId(6)
-
-    def onFocus(self, controlId):
-        # Block list from navigating to grouplist/scrollbar via XML onleft
-        if controlId in (9001, 61):
-            self.setFocusId(6)
-
-    def onClick(self, controlId):
-        if controlId == 6:
-            self.result = self.getControl(6).getSelectedPosition()
-            self.close()
-        elif controlId == 7:
-            self.result = self.RESULT_CANCEL
-            self.close()
-
 
 # ── Root categories ──
 
@@ -96,6 +21,7 @@ ROOT_CATEGORIES = [
     ("Sources", "__sources__", "videos"),
     ("Favourites", "favourites://", "videos"),
     ("Games", "__games__", "games"),
+    ("Weather", "__weather__", "videos"),
 ]
 
 # ── Addon sub-menus ──
@@ -332,6 +258,9 @@ def browse():
     if idx < 0:
         return None
     label, path, target = ROOT_CATEGORIES[idx]
+    # Weather is a special section — no browsable path, hardcoded widgets in skin XML
+    if path == "__weather__":
+        return {"label": "Weather", "path": "", "target": "", "display_type": ""}
     nodes = _SUBMENU_MAP.get(path)
     if nodes is not None:
         result = _browse_submenu(nodes, target)
@@ -592,15 +521,8 @@ def _browse_path(path, label="", thumbnail=""):
                 "path": cur_path,
                 "thumbnail": cur_thumb,
             }
-        dlg = _PathSelectDialog("DialogSelect.xml", SKIN_PATH, "default", "1080i")
-        dlg.heading = "Choose path"
-        dlg.items = items
-        dlg.doModal()
-        choice = dlg.result
-        del dlg
-        if choice == _PathSelectDialog.RESULT_CANCEL:
-            return None
-        if choice == _PathSelectDialog.RESULT_BACK:
+        choice = dialog.select("Choose path", items, useDetails=True)
+        if choice < 0:
             if stack:
                 cur_path, cur_label, cur_thumb = stack.pop()
             else:

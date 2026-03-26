@@ -346,10 +346,16 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         widget_list = self.getControl(WIDGET_LIST)
         self.widget_btn_idx = -1
         new_widgets = []
+        is_weather = False
         if self.current_section_id and self.current_section_id in self.config:
             section_data = self.config.get(self.current_section_id)
             if section_data:
                 new_widgets = section_data["widgets"]
+                is_weather = section_data["section"]["name"] == "Weather"
+        if is_weather:
+            self.setProperty("weather_section", "true")
+        else:
+            self.clearProperty("weather_section")
         old_count = len(self.widget_ids)
         new_count = len(new_widgets)
         # Update existing items in-place
@@ -499,11 +505,20 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         if not result:
             return
         default_name = result.get("label", "")
-        name = self._input("Section Name", default_name)
-        if not name:
-            return
-        onclick = path_browser.build_onclick(
-            result["path"], result.get("target", "videos")
+        # Weather is a special section — hardcoded onclick and widgets in skin XML
+        is_weather = default_name == "Weather" and not result.get("path")
+        if is_weather:
+            name = "Weather"
+        else:
+            name = self._input("Section Name", default_name)
+            if not name:
+                return
+        onclick = (
+            "ActivateWindow(Weather)"
+            if is_weather
+            else path_browser.build_onclick(
+                result["path"], result.get("target", "videos")
+            )
         )
         # Determine insert position (after current selection)
         current = self._get_selected_section_id()
@@ -593,6 +608,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
     def _add_widget(self):
         if self.current_section_id is None:
             xbmcgui.Dialog().notification("Widget Manager", "Select a section first")
+            return
+        section_data = self.config.get(self.current_section_id)
+        if section_data and section_data["section"]["name"] == "Weather":
             return
         result = path_browser.browse()
         if not result:

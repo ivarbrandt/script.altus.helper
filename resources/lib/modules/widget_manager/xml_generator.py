@@ -37,19 +37,21 @@ def _compute_list_id(section_position, widget_position):
     return BASE_LIST_ID + (section_position * 100) + widget_position
 
 
-def _build_widget_xml(widget, list_id):
+def _build_widget_xml(widget, list_id, section_visible):
     """Generate XML for a single non-stacked widget."""
     xml = """
     <include content="{display_type}">
       <param name="content_path" value="{path}"/>
       <param name="widget_header" value="{label}"/>
       <param name="widget_target" value="{target}"/>
-      <param name="list_id" value="{list_id}"/>""".format(
+      <param name="list_id" value="{list_id}"/>
+      <param name="section_visible" value="{section_visible}"/>""".format(
         display_type=widget["display_type"],
         path=_escape_ampersand(widget["path"]),
         label=_escape_ampersand(widget["label"]),
         target=widget["target"],
         list_id=list_id,
+        section_visible=section_visible,
     )
     if widget.get("sortby"):
         xml += '\n      <param name="sortby" value="%s"/>' % widget["sortby"]
@@ -72,7 +74,7 @@ def _resolve_stacked_child_type(stacked_type):
     return stacked_type + "Stacked"
 
 
-def _build_stacked_widget_xml(widget, list_id):
+def _build_stacked_widget_xml(widget, list_id, section_visible):
     """Generate XML for a stacked widget (parent category + child content)."""
     child_id = "%s1" % list_id
     child_type = _resolve_stacked_child_type(widget["stacked_type"])
@@ -83,6 +85,7 @@ def _build_stacked_widget_xml(widget, list_id):
       <param name="widget_target" value="{target}"/>
       <param name="list_id" value="{list_id}"/>
       <param name="child_id" value="{child_id}"/>
+      <param name="section_visible" value="{section_visible}"/>
     </include>
     <include content="{child_type}">
       <param name="content_path" value="$INFO[Window(Home).Property(altus.{list_id}.path)]"/>
@@ -90,6 +93,7 @@ def _build_stacked_widget_xml(widget, list_id):
       <param name="widget_target" value="{target}"/>
       <param name="list_id" value="{child_id}"/>
       <param name="parent_id" value="{list_id}"/>
+      <param name="section_visible" value="{section_visible}"/>
     </include>""".format(
         path=_escape_ampersand(widget["path"]),
         label=_escape_ampersand(widget["label"]),
@@ -97,6 +101,7 @@ def _build_stacked_widget_xml(widget, list_id):
         list_id=list_id,
         child_id=child_id,
         child_type=child_type,
+        section_visible=section_visible,
     )
 
 
@@ -157,14 +162,21 @@ def generate_widgets_xml(config):
         widgets = section_data["widgets"]
         if not widgets:
             continue
+        # Compute section visibility condition tied to menu selection
+        visible_widgets = [w for w in widgets if w.get("visible") != "false"]
+        if visible_widgets:
+            first_widget_list_id = _compute_list_id(section["position"], visible_widgets[0]["position"])
+        else:
+            first_widget_list_id = _compute_list_id(section["position"], 1)
+        section_visible = "String.IsEqual(Container(9000).ListItem.Property(menu_id),%s)" % first_widget_list_id
         for widget in widgets:
             if widget.get("visible") == "false":
                 continue
             list_id = _compute_list_id(section["position"], widget["position"])
             if widget["is_stacked"]:
-                xml += _build_stacked_widget_xml(widget, list_id)
+                xml += _build_stacked_widget_xml(widget, list_id, section_visible)
             else:
-                xml += _build_widget_xml(widget, list_id)
+                xml += _build_widget_xml(widget, list_id, section_visible)
     xml += "\n  </include>\n</includes>"
     return xml
 
