@@ -152,10 +152,14 @@ def generate_widgets_xml(config):
     for section_id in sorted(config, key=lambda sid: config[sid]["section"]["position"]):
         section_data = config[section_id]
         section = section_data["section"]
+        if section.get("visible") == "false":
+            continue
         widgets = section_data["widgets"]
         if not widgets:
             continue
         for widget in widgets:
+            if widget.get("visible") == "false":
+                continue
             list_id = _compute_list_id(section["position"], widget["position"])
             if widget["is_stacked"]:
                 xml += _build_stacked_widget_xml(widget, list_id)
@@ -177,10 +181,13 @@ def generate_main_menu_xml(config):
     for section_id in sorted(config, key=lambda sid: config[sid]["section"]["position"]):
         section_data = config[section_id]
         section = section_data["section"]
+        if section.get("visible") == "false":
+            continue
         widgets = section_data["widgets"]
-        # menu_id points to the first widget's list_id so SetFocus lands there
-        if widgets:
-            first_widget_list_id = _compute_list_id(section["position"], widgets[0]["position"])
+        # menu_id points to the first visible widget's list_id so SetFocus lands there
+        visible_widgets = [w for w in widgets if w.get("visible") != "false"]
+        if visible_widgets:
+            first_widget_list_id = _compute_list_id(section["position"], visible_widgets[0]["position"])
         else:
             first_widget_list_id = _compute_list_id(section["position"], 1)
         xml += _build_menu_item_xml(section, first_widget_list_id)
@@ -224,8 +231,10 @@ def _init_stacked_widgets(config):
     window = xbmcgui.Window(10000)
     for section_id in sorted(config, key=lambda sid: config[sid]["section"]["position"]):
         section = config[section_id]["section"]
+        if section.get("visible") == "false":
+            continue
         for widget in config[section_id]["widgets"]:
-            if not widget["is_stacked"]:
+            if not widget["is_stacked"] or widget.get("visible") == "false":
                 continue
             list_id = _compute_list_id(section["position"], widget["position"])
             try:

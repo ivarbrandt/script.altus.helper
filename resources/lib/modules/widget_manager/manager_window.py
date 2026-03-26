@@ -66,6 +66,10 @@ ADDON_DISPLAY_TYPES = [
     ("Square", "WidgetListSquare"),
 ]
 
+CATEGORY_ONLY_DISPLAY_TYPES = [
+    ("Categories", "WidgetListCategoryOther"),
+]
+
 PICTURE_DISPLAY_TYPES = [
     ("Category", "WidgetListCategoryOther"),
 ]
@@ -78,7 +82,12 @@ PROGRAM_DISPLAY_TYPES = [
     ("Square", "WidgetListSquare"),
 ]
 
-TARGET_TYPES = ["videos", "music", "programs", "files"]
+TARGET_TYPES = [
+    "videos", "music", "programs", "addonbrowser", "pictures", "games",
+    "tvchannels", "tvguide", "tvrecordings", "tvtimers", "tvsearch",
+    "radiochannels", "radioguide", "radiorecordings", "radiotimers", "radiosearch",
+    "files",
+]
 
 
 def _get_display_types_for_widget(widget):
@@ -87,6 +96,8 @@ def _get_display_types_for_widget(widget):
     target = widget.get("target", "")
     if path.startswith("pvr://"):
         return PVR_DISPLAY_TYPES
+    if path == "addons://":
+        return CATEGORY_ONLY_DISPLAY_TYPES
     if path.startswith("addons://") or path.startswith("androidapp://"):
         return ADDON_DISPLAY_TYPES
     if path.startswith("favourites://"):
@@ -141,6 +152,7 @@ DETAIL_STACKED_TYPE = 5105
 DETAIL_LIMIT = 5106
 DETAIL_SORTBY = 5107
 DETAIL_SORTORDER = 5108
+ADD_SECTION_BTN = 3500
 ADD_WIDGET_BTN = 4500
 DETAIL_CONTROLS = frozenset(
     (
@@ -164,10 +176,14 @@ ACTION_MOVE_DOWN = 4
 ACTION_SELECT = 7
 ACTION_PREVIOUS_MENU = 10
 ACTION_NAV_BACK = 92
+ACTION_CONTEXT_MENU = 117
 
 # Inline button definitions
 SECTION_BUTTONS = ["add", "rename", "edit", "reorder", "delete"]
 WIDGET_BUTTONS = ["add", "reorder", "delete"]
+
+
+HIDDEN_COLOR = "60FFFFFF"
 
 
 def _friendly(internal_name):
@@ -180,6 +196,11 @@ def _friendly(internal_name):
     if internal_name.endswith("Stacked"):
         return DISPLAY_TYPE_MAP.get(internal_name[:-7], internal_name)
     return internal_name
+
+
+def _dim_label(text):
+    """Wrap text in a dim color tag for hidden items."""
+    return "[COLOR %s]%s[/COLOR]" % (HIDDEN_COLOR, text)
 
 
 class _ServiceMonitor(threading.Thread):
@@ -274,6 +295,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self.getControl(SECTION_LIST).selectItem(0)
             self.setFocusId(SECTION_LIST)
             self._set_btn("section", 0)
+        else:
+            self.setFocusId(ADD_SECTION_BTN)
 
     def _load_config(self):
         self.config = self.cm.get_full_config()
@@ -287,8 +310,11 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         )
         for sid in sorted_ids:
             section = self.config[sid]["section"]
-            li = xbmcgui.ListItem(section["name"])
+            name = section["name"]
+            hidden = section.get("visible") == "false"
+            li = xbmcgui.ListItem(_dim_label(name) if hidden else name)
             li.setProperty("section_id", str(sid))
+            li.setProperty("hidden", "true" if hidden else "")
             section_list.addItem(li)
             self.section_ids.append(sid)
         if self.section_ids:
@@ -344,13 +370,16 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         """Create a ListItem from a widget dict."""
         is_stacked = widget["is_stacked"]
         stacked_type = widget.get("stacked_type", "")
+        hidden = widget.get("visible") == "false"
         if is_stacked:
             friendly_type = _friendly(stacked_type)
             line2 = "%s | Stacked" % friendly_type if friendly_type else "Stacked"
         else:
             friendly_type = _friendly(widget["display_type"])
             line2 = friendly_type
-        li = xbmcgui.ListItem(widget["label"], line2)
+        label = _dim_label(widget["label"]) if hidden else widget["label"]
+        line2 = _dim_label(line2) if hidden else line2
+        li = xbmcgui.ListItem(label, line2)
         self._set_widget_item_props(li, widget)
         return li
 
@@ -358,13 +387,16 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         """Set all properties on a widget ListItem."""
         is_stacked = widget["is_stacked"]
         stacked_type = widget.get("stacked_type", "")
+        hidden = widget.get("visible") == "false"
         if is_stacked:
             friendly_type = _friendly(stacked_type)
             line2 = "%s | Stacked" % friendly_type if friendly_type else "Stacked"
         else:
             friendly_type = _friendly(widget["display_type"])
             line2 = friendly_type
-        li.setLabel(widget["label"])
+        label = _dim_label(widget["label"]) if hidden else widget["label"]
+        line2 = _dim_label(line2) if hidden else line2
+        li.setLabel(label)
         li.setLabel2(line2)
         li.setProperty("widget_id", str(widget["id"]))
         li.setProperty("widget_label", widget["label"])
@@ -379,6 +411,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         li.setProperty("limit_num", str(widget.get("limit_num", 0)))
         li.setProperty("sortby", widget.get("sortby", ""))
         li.setProperty("sortorder", widget.get("sortorder", ""))
+        li.setProperty("hidden", "true" if hidden else "")
 
     def _get_selected_section_id(self):
         section_list = self.getControl(SECTION_LIST)
@@ -775,6 +808,27 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
 
     # ── Reorder Mode ──
 
+    _DETAIL_PROPS = (
+        "widget_label", "display_type", "widget_path",
+        "is_stacked", "target", "limit_num", "sortby", "sortorder",
+    )
+
+    def _freeze_detail_props(self):
+        """Snapshot current widget's detail properties as window properties."""
+        wid = self._get_selected_widget_id()
+        if wid is None:
+            return
+        idx = self.widget_ids.index(wid)
+        widget_list = self.getControl(WIDGET_LIST)
+        li = widget_list.getListItem(idx)
+        for prop in self._DETAIL_PROPS:
+            self.setProperty("reorder_detail_%s" % prop, li.getProperty(prop))
+
+    def _clear_detail_props(self):
+        """Clear frozen detail properties."""
+        for prop in self._DETAIL_PROPS:
+            self.clearProperty("reorder_detail_%s" % prop)
+
     def _toggle_reorder(self, target, item_id=None):
         if self.reorder_mode and self.reorder_target == target:
             self.reorder_mode = False
@@ -782,6 +836,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self.reorder_item_id = None
             self.clearProperty("reorder_sections")
             self.clearProperty("reorder_widgets")
+            self._clear_detail_props()
         else:
             self.reorder_mode = True
             self.reorder_target = target
@@ -791,6 +846,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 self.clearProperty("reorder_widgets")
                 self.setFocusId(SECTION_LIST)
             elif target == "widget":
+                self._freeze_detail_props()
                 self.setProperty("reorder_widgets", "true")
                 self.clearProperty("reorder_sections")
                 self.setFocusId(WIDGET_LIST)
@@ -802,77 +858,98 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         if self.reorder_target == "section":
             if item_id not in self.section_ids:
                 return
-            current_idx = self.section_ids.index(item_id)
-            new_idx = current_idx + direction
-            if new_idx < 0 or new_idx >= len(self.section_ids):
+            count = len(self.section_ids)
+            if count < 2:
                 return
-            # Update DB
-            current_pos = self.config[item_id]["section"]["position"]
-            self.cm.reorder_section(item_id, current_pos + direction)
+            current_idx = self.section_ids.index(item_id)
+            new_idx = (current_idx + direction) % count
+            # Update DB — wrapping needs explicit target position
+            if new_idx == count - 1 and current_idx == 0:
+                self.cm.reorder_section(item_id, count)
+            elif new_idx == 0 and current_idx == count - 1:
+                self.cm.reorder_section(item_id, 1)
+            else:
+                current_pos = self.config[item_id]["section"]["position"]
+                self.cm.reorder_section(item_id, current_pos + direction)
             self.changed = True
-            # Swap items in-place (no list reset)
-            section_list = self.getControl(SECTION_LIST)
-            item_a = section_list.getListItem(current_idx)
-            item_b = section_list.getListItem(new_idx)
-            label_a, label_b = item_a.getLabel(), item_b.getLabel()
-            item_a.setLabel(label_b)
-            item_b.setLabel(label_a)
-            for prop in ("section_id",):
-                va, vb = item_a.getProperty(prop), item_b.getProperty(prop)
-                item_a.setProperty(prop, vb)
-                item_b.setProperty(prop, va)
-            # Swap tracking array
-            self.section_ids[current_idx], self.section_ids[new_idx] = (
-                self.section_ids[new_idx],
-                self.section_ids[current_idx],
-            )
-            section_list.selectItem(new_idx)
             self._load_config()
+            # Refresh all section items from config
+            section_list = self.getControl(SECTION_LIST)
+            sorted_ids = sorted(
+                self.config, key=lambda sid: self.config[sid]["section"]["position"]
+            )
+            for i, sid in enumerate(sorted_ids):
+                section = self.config[sid]["section"]
+                name = section["name"]
+                hidden = section.get("visible") == "false"
+                li = section_list.getListItem(i)
+                li.setLabel(_dim_label(name) if hidden else name)
+                li.setProperty("section_id", str(sid))
+                li.setProperty("hidden", "true" if hidden else "")
+            self.section_ids = sorted_ids
+            section_list.selectItem(new_idx)
         elif self.reorder_target == "widget":
             if item_id not in self.widget_ids:
                 return
-            current_idx = self.widget_ids.index(item_id)
-            new_idx = current_idx + direction
-            if new_idx < 0 or new_idx >= len(self.widget_ids):
+            count = len(self.widget_ids)
+            if count < 2:
                 return
-            # Update DB
+            current_idx = self.widget_ids.index(item_id)
+            new_idx = (current_idx + direction) % count
+            # Update DB — wrapping needs explicit target position
             widget = self.cm.get_widget(item_id)
             if not widget:
                 return
-            self.cm.reorder_widget(item_id, widget["position"] + direction)
+            if new_idx == count - 1 and current_idx == 0:
+                self.cm.reorder_widget(item_id, count)
+            elif new_idx == 0 and current_idx == count - 1:
+                self.cm.reorder_widget(item_id, 1)
+            else:
+                self.cm.reorder_widget(item_id, widget["position"] + direction)
             self.changed = True
-            # Swap items in-place (no list reset)
-            widget_list = self.getControl(WIDGET_LIST)
-            item_a = widget_list.getListItem(current_idx)
-            item_b = widget_list.getListItem(new_idx)
-            label_a, label_b = item_a.getLabel(), item_b.getLabel()
-            label2_a, label2_b = item_a.getLabel2(), item_b.getLabel2()
-            item_a.setLabel(label_b)
-            item_b.setLabel(label_a)
-            item_a.setLabel2(label2_b)
-            item_b.setLabel2(label2_a)
-            for prop in (
-                "widget_id",
-                "widget_label",
-                "display_type",
-                "widget_path",
-                "target",
-                "is_stacked",
-                "stacked_type",
-                "limit_num",
-                "sortby",
-                "sortorder",
-            ):
-                va, vb = item_a.getProperty(prop), item_b.getProperty(prop)
-                item_a.setProperty(prop, vb)
-                item_b.setProperty(prop, va)
-            # Swap tracking array
-            self.widget_ids[current_idx], self.widget_ids[new_idx] = (
-                self.widget_ids[new_idx],
-                self.widget_ids[current_idx],
-            )
-            widget_list.selectItem(new_idx)
             self._load_config()
+            # Refresh all widget items from config
+            section_data = self.config.get(self.current_section_id)
+            widgets = section_data["widgets"] if section_data else []
+            widget_list = self.getControl(WIDGET_LIST)
+            for i, w in enumerate(widgets):
+                self._set_widget_item_props(widget_list.getListItem(i), w)
+            self.widget_ids = [w["id"] for w in widgets]
+            widget_list.selectItem(new_idx)
+
+    # ── Visibility Toggle ──
+
+    def _toggle_section_visibility(self):
+        sid = self._get_selected_section_id()
+        if sid is None:
+            return
+        section = self.config[sid]["section"]
+        currently_hidden = section.get("visible") == "false"
+        new_visible = "" if currently_hidden else "false"
+        self.cm.update_section(sid, visible=new_visible)
+        self.changed = True
+        self._load_config()
+        # Update label in-place
+        idx = self.section_ids.index(sid) if sid in self.section_ids else -1
+        if idx >= 0:
+            name = self.config[sid]["section"]["name"]
+            li = self.getControl(SECTION_LIST).getListItem(idx)
+            li.setLabel(_dim_label(name) if new_visible == "false" else name)
+            li.setProperty("hidden", "true" if new_visible == "false" else "")
+
+    def _toggle_widget_visibility(self):
+        wid = self._get_selected_widget_id()
+        if wid is None:
+            return
+        row = self.cm.get_widget(wid)
+        if not row:
+            return
+        widget = dict(row)
+        currently_hidden = widget.get("visible") == "false"
+        new_visible = "" if currently_hidden else "false"
+        self.cm.update_widget(wid, visible=new_visible)
+        self.changed = True
+        self._update_widget_item_in_place(wid)
 
     # ── Event Handlers ──
 
@@ -885,6 +962,13 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.prev_focus_id = control_id
 
     def onClick(self, control_id):
+        if control_id == ADD_SECTION_BTN:
+            self._add_section()
+            if self.section_ids:
+                self.setFocusId(SECTION_LIST)
+                self._set_btn("section", 0)
+            return
+
         if control_id == SECTION_LIST:
             if self.reorder_mode and self.reorder_target == "section":
                 self.reorder_mode = False
@@ -904,6 +988,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 self.reorder_target = None
                 self.reorder_item_id = None
                 self.clearProperty("reorder_widgets")
+                self._clear_detail_props()
                 return
             if self.widget_btn_idx >= 0:
                 self._activate_btn("widget")
@@ -929,6 +1014,16 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
     def onAction(self, action):
         action_id = action.getId()
 
+        # Long press: toggle visibility
+        if action_id == ACTION_CONTEXT_MENU:
+            focus_id = self.getFocusId()
+            if focus_id == SECTION_LIST:
+                self._toggle_section_visibility()
+                return
+            elif focus_id == WIDGET_LIST:
+                self._toggle_widget_visibility()
+                return
+
         # Close dialog
         if action_id in (ACTION_PREVIOUS_MENU, ACTION_NAV_BACK):
             if self.reorder_mode:
@@ -937,6 +1032,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 self.reorder_item_id = None
                 self.clearProperty("reorder_sections")
                 self.clearProperty("reorder_widgets")
+                self._clear_detail_props()
                 return
             self._on_close()
             self.close()
@@ -1013,10 +1109,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         label_a, label_b = a.getLabel(), b.getLabel()
         a.setLabel(label_b)
         b.setLabel(label_a)
-        sid_a = a.getProperty("section_id")
-        sid_b = b.getProperty("section_id")
-        a.setProperty("section_id", sid_b)
-        b.setProperty("section_id", sid_a)
+        for prop in ("section_id", "hidden"):
+            va, vb = a.getProperty(prop), b.getProperty(prop)
+            a.setProperty(prop, vb)
+            b.setProperty(prop, va)
 
     def _swap_widget_items(self, widget_list, idx_a, idx_b):
         """Swap labels and properties of two widget list items."""
@@ -1039,6 +1135,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             "limit_num",
             "sortby",
             "sortorder",
+            "hidden",
         ):
             va, vb = a.getProperty(prop), b.getProperty(prop)
             a.setProperty(prop, vb)

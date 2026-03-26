@@ -101,6 +101,7 @@ ROOT_CATEGORIES = [
 # ── Addon sub-menus ──
 
 ADDON_NODES = [
+    ("Addon Categories", "addons://", "addonbrowser"),
     ("Video Addons", "addons://sources/video", "videos"),
     ("Music Addons", "addons://sources/music", "music"),
     ("Program Addons", "addons://sources/executable", "programs"),
@@ -118,35 +119,49 @@ LIBRARY_NODES = [
 ]
 
 VIDEO_LIBRARY_NODES = [
-    ("Movies", "videodb://movies/titles/"),
-    ("Movie Genres", "videodb://movies/genres/"),
-    ("Movie Years", "videodb://movies/years/"),
-    ("Movie Actors", "videodb://movies/actors/"),
-    ("Movie Directors", "videodb://movies/directors/"),
-    ("Movie Studios", "videodb://movies/studios/"),
-    ("Movie Countries", "videodb://movies/countries/"),
-    ("Movie Sets", "videodb://movies/sets/"),
-    ("Movie Tags", "videodb://movies/tags/"),
-    ("TV Shows", "videodb://tvshows/titles/"),
-    ("TV Show Genres", "videodb://tvshows/genres/"),
-    ("TV Show Years", "videodb://tvshows/years/"),
-    ("TV Show Actors", "videodb://tvshows/actors/"),
-    ("TV Show Studios", "videodb://tvshows/studios/"),
-    ("TV Show Tags", "videodb://tvshows/tags/"),
-    ("Recently Added Movies", "videodb://recentlyaddedmovies/"),
+    ("Movies", "__video_movies__", "videos"),
+    ("TV Shows", "__video_tvshows__", "videos"),
+    ("Music Videos", "__video_musicvideos__", "videos"),
+    ("Video Categories", "library://video/"),
+]
+
+VIDEO_MOVIES_NODES = [
+    ("Categories", "library://video/movies/"),
+    ("Titles", "videodb://movies/titles/"),
+    ("Genres", "videodb://movies/genres/"),
+    ("Years", "videodb://movies/years/"),
+    ("Actors", "videodb://movies/actors/"),
+    ("Directors", "videodb://movies/directors/"),
+    ("Studios", "videodb://movies/studios/"),
+    ("Countries", "videodb://movies/countries/"),
+    ("Sets", "videodb://movies/sets/"),
+    ("Tags", "videodb://movies/tags/"),
+    ("Recently Added", "videodb://recentlyaddedmovies/"),
+    ("In Progress", "videodb://inprogressmovies/"),
+]
+
+VIDEO_TVSHOWS_NODES = [
+    ("Categories", "library://video/tvshows/"),
+    ("Titles", "videodb://tvshows/titles/"),
+    ("Genres", "videodb://tvshows/genres/"),
+    ("Years", "videodb://tvshows/years/"),
+    ("Actors", "videodb://tvshows/actors/"),
+    ("Studios", "videodb://tvshows/studios/"),
+    ("Tags", "videodb://tvshows/tags/"),
     ("Recently Added Episodes", "videodb://recentlyaddedepisodes/"),
-    ("Recently Added Music Videos", "videodb://recentlyaddedmusicvideos/"),
-    ("In Progress Movies", "videodb://inprogressmovies/"),
-    ("In Progress TV Shows", "videodb://inprogresstvshows/"),
-    ("Music Videos", "videodb://musicvideos/titles/"),
-    ("Music Video Genres", "videodb://musicvideos/genres/"),
-    ("Music Video Years", "videodb://musicvideos/years/"),
-    ("Music Video Artists", "videodb://musicvideos/artists/"),
-    ("Music Video Albums", "videodb://musicvideos/albums/"),
-    ("Music Video Studios", "videodb://musicvideos/studios/"),
-    ("Music Video Tags", "videodb://musicvideos/tags/"),
-    ("Video Library Root", "library://video/"),
-    ("Music Video Library Root", "library://video/musicvideos/"),
+    ("In Progress", "videodb://inprogresstvshows/"),
+]
+
+VIDEO_MUSICVIDEOS_NODES = [
+    ("Categories", "library://video/musicvideos/"),
+    ("Titles", "videodb://musicvideos/titles/"),
+    ("Genres", "videodb://musicvideos/genres/"),
+    ("Years", "videodb://musicvideos/years/"),
+    ("Artists", "videodb://musicvideos/artists/"),
+    ("Albums", "videodb://musicvideos/albums/"),
+    ("Studios", "videodb://musicvideos/studios/"),
+    ("Tags", "videodb://musicvideos/tags/"),
+    ("Recently Added", "videodb://recentlyaddedmusicvideos/"),
 ]
 
 MUSIC_LIBRARY_NODES = [
@@ -172,23 +187,25 @@ PVR_NODES = [
 ]
 
 PVR_TV_NODES = [
-    ("TV Categories", "pvr://tv/"),
-    ("TV Channels (Last Played)", "pvr://channels/tv/*?view=lastplayed"),
-    ("TV Channels", "pvr://channels/tv/"),
-    ("TV Recordings", "pvr://recordings/tv/active?view=flat"),
-    ("TV Timers", "pvr://timers/tv/timers/?view=hidedisabled"),
-    ("TV Channel Groups", "pvr://channels/tv"),
-    ("TV Saved Searches", "pvr://search/tv/savedsearches"),
+    ("TV Categories", "pvr://tv/", "videos"),
+    ("TV Channels (Last Played)", "pvr://channels/tv/*?view=lastplayed", "tvchannels"),
+    ("TV Channels", "pvr://channels/tv/", "tvchannels"),
+    ("TV Recordings", "pvr://recordings/tv/active?view=flat", "tvrecordings"),
+    ("TV Timers", "pvr://timers/tv/timers/?view=hidedisabled", "tvtimers"),
+    ("TV Channel Groups", "pvr://channels/tv", "tvguide"),
+    ("TV Saved Searches", "pvr://search/tv/savedsearches", "tvsearch"),
+    ("TV Channels (New)", "pvr://channels/tv/*?view=dateadded", "tvchannels"),
 ]
 
 PVR_RADIO_NODES = [
-    ("Radio Categories", "pvr://radio/"),
-    ("Radio Channels (Last Played)", "pvr://channels/radio/*?view=lastplayed"),
-    ("Radio Channels", "pvr://channels/radio/"),
-    ("Radio Recordings", "pvr://recordings/radio/active?view=flat"),
-    ("Radio Timers", "pvr://timers/radio/timers/?view=hidedisabled"),
-    ("Radio Channel Groups", "pvr://channels/radio"),
-    ("Radio Saved Searches", "pvr://search/radio/savedsearches"),
+    ("Radio Categories", "pvr://radio/", "music"),
+    ("Radio Channels (Last Played)", "pvr://channels/radio/*?view=lastplayed", "radiochannels"),
+    ("Radio Channels", "pvr://channels/radio/", "radiochannels"),
+    ("Radio Recordings", "pvr://recordings/radio/active?view=flat", "radiorecordings"),
+    ("Radio Timers", "pvr://timers/radio/timers/?view=hidedisabled", "radiotimers"),
+    ("Radio Channel Groups", "pvr://channels/radio", "radioguide"),
+    ("Radio Saved Searches", "pvr://search/radio/savedsearches", "radiosearch"),
+    ("Radio Channels (New)", "pvr://channels/radio/*?view=dateadded", "radiochannels"),
 ]
 
 # ── Pictures sub-menu ──
@@ -257,6 +274,9 @@ _SUBMENU_MAP = {
     "__playlists__": PLAYLIST_NODES,
     "__sources__": SOURCES_NODES,
     "__video_library__": VIDEO_LIBRARY_NODES,
+    "__video_movies__": VIDEO_MOVIES_NODES,
+    "__video_tvshows__": VIDEO_TVSHOWS_NODES,
+    "__video_musicvideos__": VIDEO_MUSICVIDEOS_NODES,
     "__music_library__": MUSIC_LIBRARY_NODES,
     "__pvr_tv__": PVR_TV_NODES,
     "__pvr_radio__": PVR_RADIO_NODES,
@@ -276,6 +296,17 @@ WINDOW_MAP = {
     "games": "Games",
     "files": "Files",
     "addons": "AddonBrowser",
+    "addonbrowser": "AddonBrowser",
+    "tvchannels": "TVChannels",
+    "tvguide": "TVGuide",
+    "tvrecordings": "TVRecordings",
+    "tvtimers": "TVTimers",
+    "tvsearch": "TVChannels",
+    "radiochannels": "RadioChannels",
+    "radioguide": "RadioChannels",
+    "radiorecordings": "RadioRecordings",
+    "radiotimers": "RadioTimers",
+    "radiosearch": "RadioChannels",
 }
 
 # Special onclick overrides for paths that need non-standard window targets
@@ -370,6 +401,9 @@ def _auto_display_type(path, target):
             return "WidgetListSquare"
         # Channels, recordings, timers → PVR layout
         return "WidgetListPVR"
+    # Addon root categories → Category Other
+    if path == "addons://":
+        return "WidgetListCategoryOther"
     # Addon / installed addon paths → Square
     if path.startswith("addons://") or path.startswith("androidapp://"):
         return "WidgetListSquare"
@@ -394,13 +428,22 @@ def _auto_display_type(path, target):
     # Programs → Square
     if target == "programs":
         return "WidgetListSquare"
-    # Video library/source root paths → Category Other
-    if path in ("library://video/", "library://video/musicvideos/"):
+    # Video library node paths (library://video/*/) → Category Other
+    if path.startswith("library://video/"):
         return "WidgetListCategoryOther"
     if path.startswith("sources://video/"):
         return "WidgetListCategoryOther"
     if path.startswith("special://videoplaylists"):
         return "WidgetListCategoryOther"
+    # videodb category browsers (genres, studios, years, etc.) → Category Other
+    if path.startswith("videodb://"):
+        _CAT_SUFFIXES = (
+            "genres/", "studios/", "years/", "actors/", "directors/",
+            "countries/", "tags/", "artists/", "albums/",
+        )
+        for suffix in _CAT_SUFFIXES:
+            if path.endswith(suffix):
+                return "WidgetListCategoryOther"
     # Video content (videodb://, plugin://, playlists) → prompt user
     return None
 
@@ -425,7 +468,7 @@ def _browse_submenu(nodes, target):
         or path.startswith("library://")
         or path.startswith("sources://")
         or path.startswith("special://profile/playlists/")
-        or path.startswith("addons://")
+        or path.startswith("addons://sources/")
         or path.startswith("pvr://")
         or path.startswith("plugin://")
         or path.startswith("favourites://")

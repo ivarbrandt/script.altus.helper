@@ -53,7 +53,7 @@ VALID_COLUMNS = {
     "widgets": {
         "section_id", "position", "path", "label", "display_type", "is_stacked",
         "stacked_type", "target", "limit_num", "sortby", "sortorder", "onclick",
-        "onclick_condition",
+        "onclick_condition", "visible",
     },
     "submenus": {"section_id", "position", "label", "onclick", "icon", "visible"},
 }
@@ -72,6 +72,15 @@ class ConfigManager:
             if statement:
                 self.dbcur.execute(statement)
         self.dbcon.commit()
+        self._migrate_schema()
+
+    def _migrate_schema(self):
+        """Add columns that may be missing from older databases."""
+        try:
+            self.dbcur.execute("SELECT visible FROM widgets LIMIT 1")
+        except database.OperationalError:
+            self.dbcur.execute("ALTER TABLE widgets ADD COLUMN visible TEXT DEFAULT ''")
+            self.dbcon.commit()
 
     def close(self):
         self.dbcon.close()
