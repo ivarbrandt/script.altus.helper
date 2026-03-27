@@ -650,6 +650,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             label=label,
             display_type=internal_type,
             target=target,
+            stacked_type=internal_type,
         )
         if pos_after is not None:
             self.cm.reorder_widget(widget_id, pos_after + 1)
@@ -723,6 +724,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             if idx is None or idx < 0:
                 return
             new_val = types[idx][1]
+            # Sync stacked_type so it's ready if user toggles stacked on later
+            self.cm.update_widget(wid, stacked_type=new_val)
         elif field == "target":
             idx = self._select("Target", TARGET_TYPES)
             if idx is None or idx < 0:
