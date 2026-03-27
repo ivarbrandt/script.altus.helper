@@ -23,8 +23,8 @@ DISPLAY_TYPE_MAP = {
     "WidgetListCategory": "Category",
     "WidgetListCategoryStacked": "Category (Stacked)",
     "WidgetListSquare": "Square",
+    "WidgetListFavourites": "SquareWall",
     "WidgetListPVR": "PVR",
-    "WidgetListCategoryOther": "Categories",
 }
 
 # Selectable display types (tuples of friendly, internal)
@@ -54,24 +54,29 @@ STACKED_DISPLAY_TYPES = [
 PVR_DISPLAY_TYPES = [
     ("PVR", "WidgetListPVR"),
     ("Square", "WidgetListSquare"),
-    ("Category", "WidgetListCategoryOther"),
+    ("Category", "WidgetListCategory"),
 ]
 
 MUSIC_DISPLAY_TYPES = [
     ("Square", "WidgetListSquare"),
-    ("Category", "WidgetListCategoryOther"),
+    ("Category", "WidgetListCategory"),
 ]
 
 ADDON_DISPLAY_TYPES = [
     ("Square", "WidgetListSquare"),
 ]
 
+FAVOURITES_DISPLAY_TYPES = [
+    ("SquareWall", "WidgetListFavourites"),
+    ("Square", "WidgetListSquare"),
+]
+
 CATEGORY_ONLY_DISPLAY_TYPES = [
-    ("Categories", "WidgetListCategoryOther"),
+    ("Category", "WidgetListCategory"),
 ]
 
 PICTURE_DISPLAY_TYPES = [
-    ("Category", "WidgetListCategoryOther"),
+    ("Category", "WidgetListCategory"),
 ]
 
 GAME_DISPLAY_TYPES = [
@@ -83,9 +88,22 @@ PROGRAM_DISPLAY_TYPES = [
 ]
 
 TARGET_TYPES = [
-    "videos", "music", "programs", "addonbrowser", "pictures", "games",
-    "tvchannels", "tvguide", "tvrecordings", "tvtimers", "tvsearch",
-    "radiochannels", "radioguide", "radiorecordings", "radiotimers", "radiosearch",
+    "videos",
+    "music",
+    "programs",
+    "addonbrowser",
+    "pictures",
+    "games",
+    "tvchannels",
+    "tvguide",
+    "tvrecordings",
+    "tvtimers",
+    "tvsearch",
+    "radiochannels",
+    "radioguide",
+    "radiorecordings",
+    "radiotimers",
+    "radiosearch",
     "files",
 ]
 
@@ -101,7 +119,7 @@ def _get_display_types_for_widget(widget):
     if path.startswith("addons://") or path.startswith("androidapp://"):
         return ADDON_DISPLAY_TYPES
     if path.startswith("favourites://"):
-        return ADDON_DISPLAY_TYPES
+        return FAVOURITES_DISPLAY_TYPES
     if path.startswith("musicdb://") or path.startswith("library://music/"):
         return MUSIC_DISPLAY_TYPES
     if target == "music":
@@ -114,6 +132,7 @@ def _get_display_types_for_widget(widget):
         return PROGRAM_DISPLAY_TYPES
     # Video content — all types available
     return WIDGET_DISPLAY_TYPES
+
 
 SORT_BY_TYPES = [
     "none",
@@ -624,9 +643,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         internal_type = result.get("display_type")
         if internal_type is None:
             # Auto-assign didn't resolve — prompt with filtered types
-            types = _get_display_types_for_widget(
-                {"path": path, "target": target}
-            )
+            types = _get_display_types_for_widget({"path": path, "target": target})
             names = [t[0] for t in types]
             idx = self._select("Display Type", names)
             if idx is None or idx < 0:
@@ -830,8 +847,14 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
     # ── Reorder Mode ──
 
     _DETAIL_PROPS = (
-        "widget_label", "display_type", "widget_path",
-        "is_stacked", "target", "limit_num", "sortby", "sortorder",
+        "widget_label",
+        "display_type",
+        "widget_path",
+        "is_stacked",
+        "target",
+        "limit_num",
+        "sortby",
+        "sortorder",
     )
 
     def _freeze_detail_props(self):

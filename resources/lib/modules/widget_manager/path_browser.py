@@ -27,7 +27,7 @@ ROOT_CATEGORIES = [
 # ── Addon sub-menus ──
 
 ADDON_NODES = [
-    ("Addon Categories", "addons://", "addonbrowser"),
+    ("Categories", "addons://", "addonbrowser"),
     ("Video Addons", "addons://sources/video", "videos"),
     ("Music Addons", "addons://sources/music", "music"),
     ("Program Addons", "addons://sources/executable", "programs"),
@@ -48,7 +48,7 @@ VIDEO_LIBRARY_NODES = [
     ("Movies", "__video_movies__", "videos"),
     ("TV Shows", "__video_tvshows__", "videos"),
     ("Music Videos", "__video_musicvideos__", "videos"),
-    ("Video Categories", "library://video/"),
+    ("Categories", "library://video/"),
 ]
 
 VIDEO_MOVIES_NODES = [
@@ -113,7 +113,7 @@ PVR_NODES = [
 ]
 
 PVR_TV_NODES = [
-    ("TV Categories", "pvr://tv/", "videos"),
+    ("Categories", "pvr://tv/", "videos"),
     ("TV Channels (Last Played)", "pvr://channels/tv/*?view=lastplayed", "tvchannels"),
     ("TV Channels", "pvr://channels/tv/", "tvchannels"),
     ("TV Recordings", "pvr://recordings/tv/active?view=flat", "tvrecordings"),
@@ -124,8 +124,12 @@ PVR_TV_NODES = [
 ]
 
 PVR_RADIO_NODES = [
-    ("Radio Categories", "pvr://radio/", "music"),
-    ("Radio Channels (Last Played)", "pvr://channels/radio/*?view=lastplayed", "radiochannels"),
+    ("Categories", "pvr://radio/", "music"),
+    (
+        "Radio Channels (Last Played)",
+        "pvr://channels/radio/*?view=lastplayed",
+        "radiochannels",
+    ),
     ("Radio Channels", "pvr://channels/radio/", "radiochannels"),
     ("Radio Recordings", "pvr://recordings/radio/active?view=flat", "radiorecordings"),
     ("Radio Timers", "pvr://timers/radio/timers/?view=hidedisabled", "radiotimers"),
@@ -324,7 +328,7 @@ def _auto_display_type(path, target):
     if path.startswith("pvr://"):
         # Top-level category browsers
         if path in ("pvr://tv/", "pvr://radio/"):
-            return "WidgetListCategoryOther"
+            return "WidgetListCategory"
         # Channel groups (for guide-style display)
         if path in ("pvr://channels/tv", "pvr://channels/radio"):
             return "WidgetListSquare"
@@ -332,25 +336,25 @@ def _auto_display_type(path, target):
         return "WidgetListPVR"
     # Addon root categories → Category Other
     if path == "addons://":
-        return "WidgetListCategoryOther"
+        return "WidgetListCategory"
     # Addon / installed addon paths → Square
     if path.startswith("addons://") or path.startswith("androidapp://"):
         return "WidgetListSquare"
     # Favourites → Square
     if path.startswith("favourites://"):
-        return "WidgetListSquare"
+        return "WidgetListFavourites"
     # Music library content → Square (album/artist artwork is square)
     if path.startswith("musicdb://"):
         return "WidgetListSquare"
     # Music library root → Category Other
     if path == "library://music/" or path.startswith("library://music/"):
-        return "WidgetListCategoryOther"
+        return "WidgetListCategory"
     # Music skin playlists → Square
     if target == "music":
         return "WidgetListSquare"
     # Picture sources → Category Other
     if path.startswith("sources://pictures/") or target == "pictures":
-        return "WidgetListCategoryOther"
+        return "WidgetListCategory"
     # Games → Square
     if target == "games":
         return "WidgetListSquare"
@@ -359,20 +363,27 @@ def _auto_display_type(path, target):
         return "WidgetListSquare"
     # Video library node paths (library://video/*/) → Category Other
     if path.startswith("library://video/"):
-        return "WidgetListCategoryOther"
+        return "WidgetListCategory"
     if path.startswith("sources://video/"):
-        return "WidgetListCategoryOther"
+        return "WidgetListCategory"
     if path.startswith("special://videoplaylists"):
-        return "WidgetListCategoryOther"
+        return "WidgetListCategory"
     # videodb category browsers (genres, studios, years, etc.) → Category Other
     if path.startswith("videodb://"):
         _CAT_SUFFIXES = (
-            "genres/", "studios/", "years/", "actors/", "directors/",
-            "countries/", "tags/", "artists/", "albums/",
+            "genres/",
+            "studios/",
+            "years/",
+            "actors/",
+            "directors/",
+            "countries/",
+            "tags/",
+            "artists/",
+            "albums/",
         )
         for suffix in _CAT_SUFFIXES:
             if path.endswith(suffix):
-                return "WidgetListCategoryOther"
+                return "WidgetListCategory"
     # Video content (videodb://, plugin://, playlists) → prompt user
     return None
 

@@ -4,7 +4,7 @@ Creates default sections and widgets matching Estuary's standard home screen lay
 Called on fresh install when no existing config or migration data exists.
 
 Display type mapping (Estuary → Altus):
-  WidgetListCategories → WidgetListCategoryOther
+  WidgetListCategories → WidgetListCategory
   WidgetListPoster     → WidgetListPoster
   WidgetListEpisodes   → WidgetListLandscape
   WidgetListSquare     → WidgetListSquare
@@ -22,7 +22,7 @@ DEFAULT_SECTIONS = [
             (
                 "Categories",
                 "library://video/movies/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -62,7 +62,7 @@ DEFAULT_SECTIONS = [
             (
                 "Genres",
                 "videodb://movies/genres/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -84,7 +84,7 @@ DEFAULT_SECTIONS = [
             (
                 "Categories",
                 "library://video/tvshows/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -116,7 +116,7 @@ DEFAULT_SECTIONS = [
             (
                 "Genres",
                 "videodb://tvshows/genres/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -124,7 +124,7 @@ DEFAULT_SECTIONS = [
             (
                 "Studios",
                 "videodb://tvshows/studios/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -138,7 +138,7 @@ DEFAULT_SECTIONS = [
             (
                 "Categories",
                 "library://music/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "music",
                 "",
                 "",
@@ -200,7 +200,7 @@ DEFAULT_SECTIONS = [
             (
                 "Categories",
                 "addons://",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "addonbrowser",
                 "",
                 "",
@@ -262,7 +262,7 @@ DEFAULT_SECTIONS = [
             (
                 "Categories",
                 "library://video/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -270,7 +270,7 @@ DEFAULT_SECTIONS = [
             (
                 "Sources",
                 "sources://video/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -278,7 +278,7 @@ DEFAULT_SECTIONS = [
             (
                 "Playlists",
                 "special://videoplaylists/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -289,7 +289,7 @@ DEFAULT_SECTIONS = [
         "name": "Live TV",
         "onclick": "ActivateWindow(TVChannels)",
         "widgets": [
-            ("Categories", "pvr://tv/", "WidgetListCategoryOther", "videos", "", ""),
+            ("Categories", "pvr://tv/", "WidgetListCategory", "videos", "", ""),
             (
                 "Recent Channels",
                 "pvr://channels/tv/*?view=lastplayed",
@@ -337,7 +337,7 @@ DEFAULT_SECTIONS = [
         "name": "Radio",
         "onclick": "ActivateWindow(RadioChannels)",
         "widgets": [
-            ("Categories", "pvr://radio/", "WidgetListCategoryOther", "music", "", ""),
+            ("Categories", "pvr://radio/", "WidgetListCategory", "music", "", ""),
             (
                 "Recent Channels",
                 "pvr://channels/radio/*?view=lastplayed",
@@ -392,7 +392,7 @@ DEFAULT_SECTIONS = [
         "name": "Favourites",
         "onclick": "ActivateWindow(favouritesbrowser)",
         "widgets": [
-            ("Favourites", "favourites://", "WidgetListSquare", "videos", "", ""),
+            ("Favourites", "favourites://", "WidgetListFavourites", "videos", "", ""),
         ],
     },
     {
@@ -407,7 +407,7 @@ DEFAULT_SECTIONS = [
             (
                 "Categories",
                 "library://video/musicvideos/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "videos",
                 "",
                 "",
@@ -447,7 +447,7 @@ DEFAULT_SECTIONS = [
             (
                 "Studios",
                 "videodb://musicvideos/studios/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "music",
                 "",
                 "",
@@ -461,7 +461,7 @@ DEFAULT_SECTIONS = [
             (
                 "Sources",
                 "sources://pictures/",
-                "WidgetListCategoryOther",
+                "WidgetListCategory",
                 "pictures",
                 "",
                 "",

@@ -154,7 +154,9 @@ def generate_widgets_xml(config):
         XML string with all widgets in a single include.
     """
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>\n  <include name="AllWidgets">'
-    for section_id in sorted(config, key=lambda sid: config[sid]["section"]["position"]):
+    for section_id in sorted(
+        config, key=lambda sid: config[sid]["section"]["position"]
+    ):
         section_data = config[section_id]
         section = section_data["section"]
         if section.get("visible") == "false":
@@ -165,10 +167,15 @@ def generate_widgets_xml(config):
         # Compute section visibility condition tied to menu selection
         visible_widgets = [w for w in widgets if w.get("visible") != "false"]
         if visible_widgets:
-            first_widget_list_id = _compute_list_id(section["position"], visible_widgets[0]["position"])
+            first_widget_list_id = _compute_list_id(
+                section["position"], visible_widgets[0]["position"]
+            )
         else:
             first_widget_list_id = _compute_list_id(section["position"], 1)
-        section_visible = "String.IsEqual(Container(9000).ListItem.Property(menu_id),%s)" % first_widget_list_id
+        section_visible = (
+            "String.IsEqual(Container(9000).ListItem.Property(menu_id),%s)"
+            % first_widget_list_id
+        )
         for widget in widgets:
             if widget.get("visible") == "false":
                 continue
@@ -190,7 +197,9 @@ def generate_main_menu_xml(config):
         XML string with all section menu items in a single include.
     """
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>\n  <include name="MainMenuItems">'
-    for section_id in sorted(config, key=lambda sid: config[sid]["section"]["position"]):
+    for section_id in sorted(
+        config, key=lambda sid: config[sid]["section"]["position"]
+    ):
         section_data = config[section_id]
         section = section_data["section"]
         if section.get("visible") == "false":
@@ -199,7 +208,9 @@ def generate_main_menu_xml(config):
         # menu_id points to the first visible widget's list_id so SetFocus lands there
         visible_widgets = [w for w in widgets if w.get("visible") != "false"]
         if visible_widgets:
-            first_widget_list_id = _compute_list_id(section["position"], visible_widgets[0]["position"])
+            first_widget_list_id = _compute_list_id(
+                section["position"], visible_widgets[0]["position"]
+            )
         else:
             first_widget_list_id = _compute_list_id(section["position"], 1)
         xml += _build_menu_item_xml(section, first_widget_list_id)
@@ -216,60 +227,55 @@ def _write_xml(file_path, content):
 def _files_get_directory(directory):
     """Fetch directory listing via JSON-RPC, returning plugin directories."""
     import json
+
     command = {
         "jsonrpc": "2.0",
         "id": "script.altus.helper",
         "method": "Files.GetDirectory",
-        "params": {"directory": directory, "media": "files",
-                    "properties": ["title", "file", "thumbnail"]},
+        "params": {
+            "directory": directory,
+            "media": "files",
+            "properties": ["title", "file", "thumbnail"],
+        },
     }
     try:
         response = xbmc.executeJSONRPC(json.dumps(command))
         result = json.loads(response).get("result", None)
         return [
-            i for i in result.get("files")
+            i
+            for i in result.get("files")
             if i["file"].startswith("plugin://") and i["filetype"] == "directory"
         ]
     except Exception:
         return None
 
 
-def _init_section_stacked_widgets(config, section_id):
-    """Pre-load the first category for stacked widgets in a single section.
+def _init_stacked_widgets(config):
+    """Pre-load the first category for all stacked widgets.
 
-    Skips widgets that already have window properties set (already initialized).
+    For each stacked widget, fetches the first item from its content path
+    and sets window properties so the child list has content on startup.
     """
     window = xbmcgui.Window(10000)
-    section_data = config.get(section_id)
-    if not section_data:
-        return
-    section = section_data["section"]
-    if section.get("visible") == "false":
-        return
-    for widget in section_data["widgets"]:
-        if not widget["is_stacked"] or widget.get("visible") == "false":
-            continue
-        list_id = _compute_list_id(section["position"], widget["position"])
-        if window.getProperty("altus.%s.path" % list_id):
-            continue
-        try:
-            items = _files_get_directory(widget["path"])
-            if not items:
-                continue
-            first_item = items[0]
-            window.setProperty("altus.%s.label" % list_id, first_item["label"])
-            window.setProperty("altus.%s.path" % list_id, first_item["file"])
-        except Exception:
-            continue
-
-
-def _init_stacked_widgets(config):
-    """Pre-load the first category for all stacked widgets."""
-    for section_id in sorted(config, key=lambda sid: config[sid]["section"]["position"]):
+    for section_id in sorted(
+        config, key=lambda sid: config[sid]["section"]["position"]
+    ):
         section = config[section_id]["section"]
         if section.get("visible") == "false":
             continue
-        _init_section_stacked_widgets(config, section_id)
+        for widget in config[section_id]["widgets"]:
+            if not widget["is_stacked"] or widget.get("visible") == "false":
+                continue
+            list_id = _compute_list_id(section["position"], widget["position"])
+            try:
+                items = _files_get_directory(widget["path"])
+                if not items:
+                    continue
+                first_item = items[0]
+                window.setProperty("altus.%s.label" % list_id, first_item["label"])
+                window.setProperty("altus.%s.path" % list_id, first_item["file"])
+            except Exception:
+                continue
 
 
 def _clear_stacked_widget_properties(config):
