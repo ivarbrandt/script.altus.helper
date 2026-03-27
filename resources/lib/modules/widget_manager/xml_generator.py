@@ -234,30 +234,55 @@ def _files_get_directory(directory):
         return None
 
 
-def _init_stacked_widgets(config):
-    """Pre-load the first category for all stacked widgets.
+def _init_section_stacked_widgets(config, section_id):
+    """Pre-load the first category for stacked widgets in a single section.
 
-    For each stacked widget, fetches the first item from its content path
-    and sets window properties so the child list has content on startup.
+    Skips widgets that already have window properties set (already initialized).
     """
     window = xbmcgui.Window(10000)
+    section_data = config.get(section_id)
+    if not section_data:
+        return
+    section = section_data["section"]
+    if section.get("visible") == "false":
+        return
+    for widget in section_data["widgets"]:
+        if not widget["is_stacked"] or widget.get("visible") == "false":
+            continue
+        list_id = _compute_list_id(section["position"], widget["position"])
+        if window.getProperty("altus.%s.path" % list_id):
+            continue
+        try:
+            items = _files_get_directory(widget["path"])
+            if not items:
+                continue
+            first_item = items[0]
+            window.setProperty("altus.%s.label" % list_id, first_item["label"])
+            window.setProperty("altus.%s.path" % list_id, first_item["file"])
+        except Exception:
+            continue
+
+
+def _init_stacked_widgets(config):
+    """Pre-load the first category for all stacked widgets."""
     for section_id in sorted(config, key=lambda sid: config[sid]["section"]["position"]):
         section = config[section_id]["section"]
         if section.get("visible") == "false":
             continue
+        _init_section_stacked_widgets(config, section_id)
+
+
+def _clear_stacked_widget_properties(config):
+    """Clear all stacked widget window properties so they re-fetch on next init."""
+    window = xbmcgui.Window(10000)
+    for section_id in config:
+        section = config[section_id]["section"]
         for widget in config[section_id]["widgets"]:
-            if not widget["is_stacked"] or widget.get("visible") == "false":
+            if not widget["is_stacked"]:
                 continue
             list_id = _compute_list_id(section["position"], widget["position"])
-            try:
-                items = _files_get_directory(widget["path"])
-                if not items:
-                    continue
-                first_item = items[0]
-                window.setProperty("altus.%s.label" % list_id, first_item["label"])
-                window.setProperty("altus.%s.path" % list_id, first_item["file"])
-            except Exception:
-                continue
+            window.clearProperty("altus.%s.label" % list_id)
+            window.clearProperty("altus.%s.path" % list_id)
 
 
 def _reload_skin():
@@ -278,6 +303,7 @@ def _reload_skin():
     cm = ConfigManager()
     config = cm.get_full_config()
     cm.close()
+    _clear_stacked_widget_properties(config)
     _init_stacked_widgets(config)
 
 
