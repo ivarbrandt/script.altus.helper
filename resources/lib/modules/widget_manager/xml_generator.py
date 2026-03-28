@@ -241,11 +241,7 @@ def _files_get_directory(directory):
     try:
         response = xbmc.executeJSONRPC(json.dumps(command))
         result = json.loads(response).get("result", None)
-        return [
-            i
-            for i in result.get("files")
-            if i["file"].startswith("plugin://") and i["filetype"] == "directory"
-        ]
+        return [i for i in result.get("files") if i["filetype"] == "directory"]
     except Exception:
         return None
 
@@ -291,11 +287,21 @@ def _clear_stacked_widget_properties(config):
             window.clearProperty("altus.%s.path" % list_id)
 
 
+def _clear_stacked_widget_properties_all():
+    """Read config and clear all stacked widget properties."""
+    cm = ConfigManager()
+    config = cm.get_full_config()
+    cm.close()
+    if config:
+        _clear_stacked_widget_properties(config)
+
+
 def _reload_skin():
     """Reload the skin to pick up XML changes.
 
-    Mirrors the old reload logic: prevents duplicate reloads, waits for
-    addon browser dialog to close, and reinitializes stacked widgets.
+    Prevents duplicate reloads and waits for addon browser dialog to close.
+    Stacked widget init is handled by the skin's <onload> starting_widgets
+    trigger after ReloadSkin(), avoiding race conditions with this thread.
     """
     window = xbmcgui.Window(10000)
     if window.getProperty("altus.clear_path_refresh") == "true":
@@ -304,17 +310,32 @@ def _reload_skin():
     while xbmcgui.getCurrentWindowId() == 10035:
         xbmc.sleep(500)
     window.setProperty("altus.clear_path_refresh", "")
+    _clear_stacked_widget_properties_all()
     xbmc.sleep(200)
     xbmc.executebuiltin("ReloadSkin()")
-    cm = ConfigManager()
-    config = cm.get_full_config()
-    cm.close()
-    _clear_stacked_widget_properties(config)
-    _init_stacked_widgets(config)
 
 
-def generate_and_reload():
-    """Full rebuild: read config, generate all XML files, reload skin."""
+def _auto_save_profile(active_config=None):
+    """Auto-save the active widget config to its profile file.
+
+    Args:
+        active_config: explicit profile name to save as. When provided, this
+            avoids reading the skin string (which is set asynchronously and
+            may still hold the previous value).
+    """
+    active = active_config or xbmc.getInfoLabel("Skin.String(altus_active_widget_config)")
+    if active:
+        from modules.widget_manager.config_manager import save_config_as
+        save_config_as(active)
+
+
+def generate_and_reload(active_config=None):
+    """Full rebuild: read config, generate all XML files, reload skin.
+
+    Args:
+        active_config: explicit profile name for auto-save. Pass this when
+            Skin.SetString was just called and may not have taken effect yet.
+    """
     cm = ConfigManager()
     config = cm.get_full_config()
     cm.close()
@@ -322,4 +343,5 @@ def generate_and_reload():
     menu_xml = generate_main_menu_xml(config)
     _write_xml(WIDGETS_XML_FILE, widgets_xml)
     _write_xml(MAIN_MENU_XML_FILE, menu_xml)
+    _auto_save_profile(active_config)
     Thread(target=_reload_skin).start()

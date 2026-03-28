@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import os
+import re
 import sqlite3 as database
 import xbmcvfs
 
@@ -309,3 +311,89 @@ class ConfigManager:
                 (i, rid),
             )
         self.dbcon.commit()
+
+
+def sanitize_config_name(name):
+    """Remove characters that break filenames or Kodi skin builtins."""
+    # Strip parentheses (breaks filename pattern), commas (breaks Skin.SetString)
+    return re.sub(r'[(),]', '', name).strip()
+
+
+def list_saved_configs():
+    """List all saved widget config profiles.
+
+    Returns list of profile names found as widget_config(name).db files.
+    """
+    names = []
+    _dirs, files = xbmcvfs.listdir(settings_path)
+    pattern = re.compile(r"^widget_config\((.+)\)\.db$")
+    for f in files:
+        match = pattern.match(f)
+        if match:
+            names.append(match.group(1))
+    names.sort()
+    return names
+
+
+def save_config_as(name):
+    """Save the current widget config as a named profile."""
+    dest = xbmcvfs.translatePath(
+        "special://profile/addon_data/script.altus.helper/widget_config(%s).db" % name
+    )
+    return xbmcvfs.copy(database_path, dest)
+
+
+def load_config(name):
+    """Load a named profile as the active widget config."""
+    source = xbmcvfs.translatePath(
+        "special://profile/addon_data/script.altus.helper/widget_config(%s).db" % name
+    )
+    if not xbmcvfs.exists(source):
+        return False
+    return xbmcvfs.copy(source, database_path)
+
+
+def delete_config(name):
+    """Delete a saved widget config profile."""
+    path = xbmcvfs.translatePath(
+        "special://profile/addon_data/script.altus.helper/widget_config(%s).db" % name
+    )
+    if xbmcvfs.exists(path):
+        return xbmcvfs.delete(path)
+    return False
+
+
+def rename_config(old_name, new_name):
+    """Rename a saved widget config profile."""
+    old_path = xbmcvfs.translatePath(
+        "special://profile/addon_data/script.altus.helper/widget_config(%s).db" % old_name
+    )
+    new_path = xbmcvfs.translatePath(
+        "special://profile/addon_data/script.altus.helper/widget_config(%s).db" % new_name
+    )
+    if not xbmcvfs.exists(old_path):
+        return False
+    if not xbmcvfs.copy(old_path, new_path):
+        return False
+    xbmcvfs.delete(old_path)
+    return True
+
+
+def get_active_config():
+    """Get the active profile name, verified against the actual file.
+
+    Returns the profile name if the skin string is set AND the file exists,
+    otherwise clears the stale skin string and returns empty string.
+    """
+    import xbmc
+    active = xbmc.getInfoLabel("Skin.String(altus_active_widget_config)")
+    if not active:
+        return ""
+    path = xbmcvfs.translatePath(
+        "special://profile/addon_data/script.altus.helper/widget_config(%s).db" % active
+    )
+    if xbmcvfs.exists(path):
+        return active
+    # Stale reference — file doesn't exist, clear the skin string
+    xbmc.executebuiltin("Skin.Reset(altus_active_widget_config)")
+    return ""

@@ -970,6 +970,17 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         section = self.config[sid]["section"]
         currently_hidden = section.get("visible") == "false"
         new_visible = "" if currently_hidden else "false"
+        if new_visible == "false":
+            visible_count = sum(
+                1 for s in self.config.values()
+                if s["section"].get("visible") != "false"
+            )
+            if visible_count <= 1:
+                xbmcgui.Dialog().notification(
+                    "Altus", "At least one section must remain visible",
+                    xbmcgui.NOTIFICATION_WARNING, 3000,
+                )
+                return
         self.cm.update_section(sid, visible=new_visible)
         self.changed = True
         self._load_config()
@@ -1195,12 +1206,33 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         return xbmcgui.Dialog().select(heading, options)
 
 
+def _ensure_config_exists():
+    """Ensure widget config DB has sections — migrate or create defaults.
+
+    Returns True if new config was created (XML generation needed on close).
+    """
+    from modules.widget_manager.config_manager import ConfigManager
+    cm = ConfigManager()
+    count = cm.dbcur.execute("SELECT COUNT(*) FROM sections").fetchone()[0]
+    cm.close()
+    if count > 0:
+        return False
+    from modules.widget_manager.migration import migrate
+    if not migrate():
+        from modules.widget_manager.default_config import create_default_sections
+        create_default_sections()
+    return True
+
+
 def open_manager():
+    config_created = _ensure_config_exists()
     window = WidgetManagerWindow(
         "DialogWidgetManager.xml",
         SKIN_PATH,
         "default",
         "1080i",
     )
+    if config_created:
+        window.changed = True
     window.doModal()
     del window
