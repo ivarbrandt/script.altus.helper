@@ -10,7 +10,7 @@ def get_skin_variable(variable_name):
 
 
 def widget_monitor(list_id):
-    if len(list_id) != 5:
+    if len(list_id) != 4:
         return
     monitor = xbmc.Monitor()
     try:
@@ -84,10 +84,7 @@ def widget_monitor(list_id):
             window.setProperty(label_prop, xbmc.getInfoLabel("ListItem.Label"))
             window.setProperty(path_prop, cpath_path)
             update_wait_time = 0
-            while (
-                xbmc.getCondVisibility(is_updating_cond)
-                and update_wait_time < 3
-            ):
+            while xbmc.getCondVisibility(is_updating_cond) and update_wait_time < 3:
                 monitor.waitForAbort(0.05)
                 update_wait_time += 0.05
             try:

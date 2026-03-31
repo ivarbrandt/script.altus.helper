@@ -631,7 +631,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         section_data = self.config.get(self.current_section_id)
         if section_data and section_data["section"]["name"] == "Weather":
             return
-        result = path_browser.browse()
+        result = path_browser.browse(include_weather=False)
         if not result:
             return
         path = result["path"]
@@ -802,7 +802,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 return
             new_val = SORT_ORDER_TYPES[idx]
         elif field == "path":
-            result = path_browser.browse()
+            result = path_browser.browse(include_weather=False)
             if not result:
                 return
             new_path = result["path"]

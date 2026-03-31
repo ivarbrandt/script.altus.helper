@@ -96,13 +96,13 @@ MUSIC_LIBRARY_NODES = [
     ("Songs", "musicdb://songs/"),
     ("Genres", "musicdb://genres/"),
     ("Years", "musicdb://years/"),
-    ("Recently Added Albums", "musicdb://recentlyaddedalbums/"),
-    ("Recently Played Albums", "musicdb://recentlyplayedalbums/"),
+    ("Recently Added", "musicdb://recentlyaddedalbums/"),
+    ("Recently Played", "musicdb://recentlyplayedalbums/"),
     ("Recently Played Songs", "musicdb://recentlyplayedsongs/"),
     ("Top 100 Songs", "musicdb://top100/songs/"),
     ("Top 100 Albums", "musicdb://top100/albums/"),
     ("Compilations", "musicdb://compilations/"),
-    ("Music Library Root", "library://music/"),
+    ("Categories", "library://music/"),
 ]
 
 # ── PVR sub-menus ──
@@ -114,34 +114,30 @@ PVR_NODES = [
 
 PVR_TV_NODES = [
     ("Categories", "pvr://tv/", "videos"),
-    ("TV Channels (Last Played)", "pvr://channels/tv/*?view=lastplayed", "tvchannels"),
+    ("Recent Channels", "pvr://channels/tv/*?view=lastplayed", "tvchannels"),
     ("TV Channels", "pvr://channels/tv/", "tvchannels"),
-    ("TV Recordings", "pvr://recordings/tv/active?view=flat", "tvrecordings"),
-    ("TV Timers", "pvr://timers/tv/timers/?view=hidedisabled", "tvtimers"),
-    ("TV Channel Groups", "pvr://channels/tv", "tvguide"),
-    ("TV Saved Searches", "pvr://search/tv/savedsearches", "tvsearch"),
-    ("TV Channels (New)", "pvr://channels/tv/*?view=dateadded", "tvchannels"),
+    ("Recordings", "pvr://recordings/tv/active?view=flat", "tvrecordings"),
+    ("Timers", "pvr://timers/tv/timers/?view=hidedisabled", "tvtimers"),
+    ("Channel Groups", "pvr://channels/tv", "tvguide"),
+    ("Saved Searches", "pvr://search/tv/savedsearches", "tvsearch"),
+    ("New Channels", "pvr://channels/tv/*?view=dateadded", "tvchannels"),
 ]
 
 PVR_RADIO_NODES = [
     ("Categories", "pvr://radio/", "music"),
-    (
-        "Radio Channels (Last Played)",
-        "pvr://channels/radio/*?view=lastplayed",
-        "radiochannels",
-    ),
+    ("Recent Channels", "pvr://channels/radio/*?view=lastplayed", "radiochannels"),
     ("Radio Channels", "pvr://channels/radio/", "radiochannels"),
-    ("Radio Recordings", "pvr://recordings/radio/active?view=flat", "radiorecordings"),
-    ("Radio Timers", "pvr://timers/radio/timers/?view=hidedisabled", "radiotimers"),
-    ("Radio Channel Groups", "pvr://channels/radio", "radioguide"),
-    ("Radio Saved Searches", "pvr://search/radio/savedsearches", "radiosearch"),
-    ("Radio Channels (New)", "pvr://channels/radio/*?view=dateadded", "radiochannels"),
+    ("Recordings", "pvr://recordings/radio/active?view=flat", "radiorecordings"),
+    ("Timers", "pvr://timers/radio/timers/?view=hidedisabled", "radiotimers"),
+    ("Channel Groups", "pvr://channels/radio", "radioguide"),
+    ("Saved Searches", "pvr://search/radio/savedsearches", "radiosearch"),
+    ("New Channels", "pvr://channels/radio/*?view=dateadded", "radiochannels"),
 ]
 
 # ── Pictures sub-menu ──
 
 PICTURES_NODES = [
-    ("Picture Sources", "sources://pictures/"),
+    ("Sources", "sources://pictures/"),
 ]
 
 # ── Playlists sub-menu ──
@@ -172,8 +168,8 @@ SKIN_PLAYLIST_NODES = [
     ("Random Albums", "special://skin/playlists/random_albums.xsp"),
     ("Random Artists", "special://skin/playlists/random_artists.xsp"),
     ("Unplayed Albums", "special://skin/playlists/unplayed_albums.xsp"),
-    ("Most Played Albums", "special://skin/playlists/mostplayed_albums.xsp"),
-    ("Unwatched Music Videos", "special://skin/playlists/unwatched_musicvideos.xsp"),
+    ("Most Played", "special://skin/playlists/mostplayed_albums.xsp"),
+    ("Unwatched", "special://skin/playlists/unwatched_musicvideos.xsp"),
     (
         "Random Music Video Artists",
         "special://skin/playlists/random_musicvideo_artists.xsp",
@@ -196,6 +192,9 @@ INSTALLED_ADDONS_NODES = [
 ]
 
 # ── Submenu routing ──
+
+# Submenus whose items are final widget paths (not browsable further)
+_DIRECT_SUBMENUS = {"__installed_addons__"}
 
 _SUBMENU_MAP = {
     "__addons__": ADDON_NODES,
@@ -252,16 +251,25 @@ _ONCLICK_OVERRIDES = {
 }
 
 
-def browse():
+def browse(include_weather=True):
     """
     Main entry point. Shows root category picker, then recursive path browser.
     Returns dict {"label", "path", "target", "display_type"} or None if cancelled.
     display_type is auto-assigned when possible, None when user should be prompted.
+
+    Args:
+        include_weather: If False, Weather is excluded from the root categories.
+            Pass False when browsing for widget paths (Weather widgets are hardcoded).
     """
-    idx = dialog.select("Choose content source", [c[0] for c in ROOT_CATEGORIES])
+    categories = (
+        ROOT_CATEGORIES
+        if include_weather
+        else [c for c in ROOT_CATEGORIES if c[1] != "__weather__"]
+    )
+    idx = dialog.select("Choose content source", [c[0] for c in categories])
     if idx < 0:
         return None
-    label, path, target = ROOT_CATEGORIES[idx]
+    label, path, target = categories[idx]
     # Weather is a special section — no browsable path, hardcoded widgets in skin XML
     if path == "__weather__":
         return {"label": "Weather", "path": "", "target": "", "display_type": ""}
@@ -289,7 +297,7 @@ def build_onclick(path, target):
         return override
     # Check prefix-based overrides for PVR paths
     if path.startswith("pvr://"):
-        if "channels/tv" in path:
+        if "channels/tv/" in path:
             return "ActivateWindow(TVChannels)"
         if "channels/radio" in path:
             return "ActivateWindow(RadioChannels)"
@@ -302,13 +310,13 @@ def build_onclick(path, target):
         if "timers/radio" in path:
             return "ActivateWindow(RadioTimers)"
         if "search/tv" in path:
-            return "ActivateWindow(TVChannels)"
+            return "ActivateWindow(TVSearch)"
         if "search/radio" in path:
             return "ActivateWindow(RadioChannels)"
         # Generic PVR fallback
         return "ActivateWindow(TVChannels)"
     if path.startswith("addons://"):
-        return "ActivateWindow(AddonBrowser,%s,return)" % path
+        return "ActivateWindow(1100,%s,return)" % path
     if path.startswith("androidapp://"):
         return "StartAndroidActivity(%s)" % path
     window = WINDOW_MAP.get(target, "Videos")
@@ -388,8 +396,13 @@ def _auto_display_type(path, target):
     return None
 
 
-def _browse_submenu(nodes, target):
-    """Show a sub-menu of predefined nodes, then browse or return the selected one."""
+def _browse_submenu(nodes, target, direct=False):
+    """Show a sub-menu of predefined nodes, then browse or return the selected one.
+
+    Args:
+        direct: If True, selected items are returned as final widget paths
+            without further browsing (e.g. Installed Addons items).
+    """
     idx = dialog.select("Choose category", [n[0] for n in nodes])
     if idx < 0:
         return None
@@ -400,9 +413,9 @@ def _browse_submenu(nodes, target):
     # Check if this node leads to another submenu (multi-level nesting)
     sub_nodes = _SUBMENU_MAP.get(path)
     if sub_nodes is not None:
-        return _browse_submenu(sub_nodes, node_target)
+        return _browse_submenu(sub_nodes, node_target, direct=path in _DIRECT_SUBMENUS)
     # Paths that should be browsed into via _browse_path
-    browsable = (
+    browsable = not direct and (
         path.startswith("videodb://")
         or path.startswith("musicdb://")
         or path.startswith("library://")

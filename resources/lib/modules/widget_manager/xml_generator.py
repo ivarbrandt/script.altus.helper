@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-XML Generation Engine for the new widget management system.
+XML Generation Engine for the widget management system.
 Reads config from ConfigManager and generates:
-  - script-altus-widgets.xml  (all widgets in one include, single grouplist)
-  - script-altus-main_menu.xml (all sections as main menu items)
+  - script-altus-widgets.xml      (per-section widget includes)
+  - script-altus-main_menu.xml    (all sections as main menu items)
+  - script-altus-home_groups.xml  (per-section group/grouplist structure)
 """
 import xbmc
 import xbmcgui
@@ -14,11 +15,13 @@ from modules.widget_manager.config_manager import ConfigManager
 
 WIDGETS_XML_FILE = "special://skin/xml/script-altus-widgets.xml"
 MAIN_MENU_XML_FILE = "special://skin/xml/script-altus-main_menu.xml"
-
-# Base list ID for widgets. Section and widget positions create unique IDs:
-#   list_id = BASE_LIST_ID + (section_position * 100) + widget_position
-# Supports up to 99 widgets per section and up to ~190 sections.
-BASE_LIST_ID = 19000
+HOME_GROUPS_XML_FILE = "special://skin/xml/script-altus-home_groups.xml"
+# Base ID for all widget-related controls. Each section occupies a 100-ID range:
+#   section base = BASE_ID + (section_position - 1) * 100
+#   group = base, grouplist = base + 1, pagecontrol = base + 99
+#   widget list_id = base + 10 + widget_position
+# Supports up to 60 sections (3000-8999) and 89 widgets per section.
+BASE_ID = 3000
 
 
 def _escape_ampersand(text):
@@ -28,30 +31,48 @@ def _escape_ampersand(text):
     return text
 
 
+def _compute_section_base(section_position):
+    """Compute the base ID for a section's 100-ID range."""
+    return BASE_ID + (section_position - 1) * 100
+
+
+def _compute_group_id(section_position):
+    """Compute the group control ID for a section."""
+    return _compute_section_base(section_position)
+
+
+def _compute_grouplist_id(section_position):
+    """Compute the grouplist control ID for a section."""
+    return _compute_section_base(section_position) + 1
+
+
+def _compute_pagecontrol_id(section_position):
+    """Compute the pagecontrol (scrollbar) ID for a section."""
+    return _compute_section_base(section_position) + 99
+
+
 def _compute_list_id(section_position, widget_position):
     """Compute a unique control ID for a widget.
 
-    Format: BASE + (section_pos * 100) + widget_pos
-    e.g. section 1, widget 3 → 19000 + 100 + 3 = 19103
+    Format: section_base + 10 + widget_pos
+    e.g. section 1, widget 1 → 3000 + 10 + 1 = 3011
     """
-    return BASE_LIST_ID + (section_position * 100) + widget_position
+    return _compute_section_base(section_position) + 10 + widget_position
 
 
-def _build_widget_xml(widget, list_id, section_visible):
+def _build_widget_xml(widget, list_id):
     """Generate XML for a single non-stacked widget."""
     xml = """
     <include content="{display_type}">
       <param name="content_path" value="{path}"/>
       <param name="widget_header" value="{label}"/>
       <param name="widget_target" value="{target}"/>
-      <param name="list_id" value="{list_id}"/>
-      <param name="section_visible" value="{section_visible}"/>""".format(
+      <param name="list_id" value="{list_id}"/>""".format(
         display_type=widget["display_type"],
         path=_escape_ampersand(widget["path"]),
         label=_escape_ampersand(widget["label"]),
         target=widget["target"],
         list_id=list_id,
-        section_visible=section_visible,
     )
     if widget.get("sortby"):
         xml += '\n      <param name="sortby" value="%s"/>' % widget["sortby"]
@@ -74,7 +95,7 @@ def _resolve_stacked_child_type(stacked_type):
     return stacked_type + "Stacked"
 
 
-def _build_stacked_widget_xml(widget, list_id, section_visible):
+def _build_stacked_widget_xml(widget, list_id):
     """Generate XML for a stacked widget (parent category + child content)."""
     child_id = "%s1" % list_id
     child_type = _resolve_stacked_child_type(widget["stacked_type"])
@@ -85,7 +106,6 @@ def _build_stacked_widget_xml(widget, list_id, section_visible):
       <param name="widget_target" value="{target}"/>
       <param name="list_id" value="{list_id}"/>
       <param name="child_id" value="{child_id}"/>
-      <param name="section_visible" value="{section_visible}"/>
     </include>
     <include content="{child_type}">
       <param name="content_path" value="$INFO[Window(Home).Property(altus.{list_id}.path)]"/>
@@ -93,7 +113,6 @@ def _build_stacked_widget_xml(widget, list_id, section_visible):
       <param name="widget_target" value="{target}"/>
       <param name="list_id" value="{child_id}"/>
       <param name="parent_id" value="{list_id}"/>
-      <param name="section_visible" value="{section_visible}"/>
     </include>""".format(
         path=_escape_ampersand(widget["path"]),
         label=_escape_ampersand(widget["label"]),
@@ -101,18 +120,18 @@ def _build_stacked_widget_xml(widget, list_id, section_visible):
         list_id=list_id,
         child_id=child_id,
         child_type=child_type,
-        section_visible=section_visible,
     )
 
 
-def _build_menu_item_xml(section, first_widget_list_id):
+def _build_menu_item_xml(section, group_id):
     """Generate XML for a single main menu item.
 
     Each section automatically gets a visibility condition tied to its DB id,
     allowing users to show/hide sections via skin settings.
     Weather sections get special multi-onclick handling and id=weather.
+    menu_id is the group ID so SetFocus cascades to the grouplist inside,
+    matching how weather (15000) works.
     """
-    auto_visible = "!Skin.HasSetting(HomeMenuNoSection_%s)" % section["id"]
     if section["name"] == "Weather":
         xml = """
     <item>
@@ -124,36 +143,31 @@ def _build_menu_item_xml(section, first_widget_list_id):
       <onclick condition="String.IsEmpty(Weather.Plugin)">ReplaceWindow(servicesettings,weather)</onclick>
       <property name="menu_id">$NUMBER[15000]</property>
       <property name="id">weather</property>
-      <visible>{visible}</visible>
-    </item>""".format(
-            visible=auto_visible,
-        )
+    </item>"""
     else:
         xml = """
     <item>
       <label>{name}</label>
       <onclick>{onclick}</onclick>
       <property name="menu_id">$NUMBER[{menu_id}]</property>
-      <property name="id">movies</property>
-      <visible>{visible}</visible>
+      <property name="id">widgets</property>
     </item>""".format(
             name=_escape_ampersand(section["name"]),
             onclick=_escape_ampersand(section["onclick"]),
-            menu_id=first_widget_list_id,
-            visible=auto_visible,
+            menu_id=group_id,
         )
     return xml
 
 
 def generate_widgets_xml(config):
-    """Generate the single widgets include file from config.
+    """Generate per-section widget include files from config.
 
     Args:
         config: dict from ConfigManager.get_full_config()
     Returns:
-        XML string with all widgets in a single include.
+        XML string with per-section includes (SectionWidgets_1, etc.).
     """
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>\n  <include name="AllWidgets">'
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>'
     for section_id in sorted(
         config, key=lambda sid: config[sid]["section"]["position"]
     ):
@@ -161,30 +175,23 @@ def generate_widgets_xml(config):
         section = section_data["section"]
         if section.get("visible") == "false":
             continue
+        if section["name"] == "Weather":
+            continue
         widgets = section_data["widgets"]
         if not widgets:
             continue
-        # Compute section visibility condition tied to menu selection
-        visible_widgets = [w for w in widgets if w.get("visible") != "false"]
-        if visible_widgets:
-            first_widget_list_id = _compute_list_id(
-                section["position"], visible_widgets[0]["position"]
-            )
-        else:
-            first_widget_list_id = _compute_list_id(section["position"], 1)
-        section_visible = (
-            "String.IsEqual(Container(9000).ListItem.Property(menu_id),%s)"
-            % first_widget_list_id
-        )
+        section_pos = section["position"]
+        xml += '\n  <include name="SectionWidgets_%s">' % section_pos
         for widget in widgets:
             if widget.get("visible") == "false":
                 continue
-            list_id = _compute_list_id(section["position"], widget["position"])
+            list_id = _compute_list_id(section_pos, widget["position"])
             if widget["is_stacked"]:
-                xml += _build_stacked_widget_xml(widget, list_id, section_visible)
+                xml += _build_stacked_widget_xml(widget, list_id)
             else:
-                xml += _build_widget_xml(widget, list_id, section_visible)
-    xml += "\n  </include>\n</includes>"
+                xml += _build_widget_xml(widget, list_id)
+        xml += "\n  </include>"
+    xml += "\n</includes>"
     return xml
 
 
@@ -204,16 +211,57 @@ def generate_main_menu_xml(config):
         section = section_data["section"]
         if section.get("visible") == "false":
             continue
-        widgets = section_data["widgets"]
-        # menu_id points to the first visible widget's list_id so SetFocus lands there
-        visible_widgets = [w for w in widgets if w.get("visible") != "false"]
-        if visible_widgets:
-            first_widget_list_id = _compute_list_id(
-                section["position"], visible_widgets[0]["position"]
-            )
-        else:
-            first_widget_list_id = _compute_list_id(section["position"], 1)
-        xml += _build_menu_item_xml(section, first_widget_list_id)
+        group_id = _compute_group_id(section["position"])
+        xml += _build_menu_item_xml(section, group_id)
+    xml += "\n  </include>\n</includes>"
+    return xml
+
+
+def generate_home_groups_xml(config):
+    """Generate per-section group/grouplist structure for the home screen.
+
+    Each section gets its own group (with visibility), grouplist, and scrollbar.
+    Weather sections are skipped (hardcoded in Home.xml).
+
+    Args:
+        config: dict from ConfigManager.get_full_config()
+    Returns:
+        XML string with the HomeWidgetGroups include.
+    """
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>\n  <include name="HomeWidgetGroups">'
+    for section_id in sorted(
+        config, key=lambda sid: config[sid]["section"]["position"]
+    ):
+        section_data = config[section_id]
+        section = section_data["section"]
+        if section.get("visible") == "false":
+            continue
+        if section["name"] == "Weather":
+            continue
+        section_pos = section["position"]
+        group_id = _compute_group_id(section_pos)
+        grouplist_id = _compute_grouplist_id(section_pos)
+        pagecontrol_id = _compute_pagecontrol_id(section_pos)
+        xml += """
+    <control type="group" id="{group_id}">
+      <visible>String.IsEqual(Container(9000).ListItem.Property(menu_id),{group_id})</visible>
+      <include content="Section_Visible_Right_Delayed">
+        <param name="menu_id" value="{group_id}"/>
+      </include>
+      <control type="grouplist" id="{grouplist_id}">
+        <include>WidgetGroupListCommon</include>
+        <pagecontrol>{pagecontrol_id}</pagecontrol>
+        <include>SectionWidgets_{section_pos}</include>
+      </control>
+      <include content="WidgetScrollbar" condition="Skin.HasSetting(touchmode)">
+        <param name="scrollbar_id" value="{pagecontrol_id}"/>
+      </include>
+    </control>""".format(
+            group_id=group_id,
+            grouplist_id=grouplist_id,
+            pagecontrol_id=pagecontrol_id,
+            section_pos=section_pos,
+        )
     xml += "\n  </include>\n</includes>"
     return xml
 
@@ -253,6 +301,7 @@ def _init_stacked_widgets(config):
     and sets window properties so the child list has content on startup.
     """
     window = xbmcgui.Window(10000)
+    window.setProperty("altus.starting_widgets", "true")
     for section_id in sorted(
         config, key=lambda sid: config[sid]["section"]["position"]
     ):
@@ -300,8 +349,9 @@ def _reload_skin():
     """Reload the skin to pick up XML changes.
 
     Prevents duplicate reloads and waits for addon browser dialog to close.
-    Stacked widget init is handled by the skin's <onload> starting_widgets
-    trigger after ReloadSkin(), avoiding race conditions with this thread.
+    Clears altus.starting_widgets so the skin's <onload> starting_widgets
+    trigger always fires after ReloadSkin(), ensuring stacked widgets init
+    regardless of the Disable.ResetStacked setting.
     """
     window = xbmcgui.Window(10000)
     if window.getProperty("altus.clear_path_refresh") == "true":
@@ -311,6 +361,7 @@ def _reload_skin():
         xbmc.sleep(500)
     window.setProperty("altus.clear_path_refresh", "")
     _clear_stacked_widget_properties_all()
+    window.clearProperty("altus.starting_widgets")
     xbmc.sleep(200)
     xbmc.executebuiltin("ReloadSkin()")
 
@@ -323,9 +374,12 @@ def _auto_save_profile(active_config=None):
             avoids reading the skin string (which is set asynchronously and
             may still hold the previous value).
     """
-    active = active_config or xbmc.getInfoLabel("Skin.String(altus_active_widget_config)")
+    active = active_config or xbmc.getInfoLabel(
+        "Skin.String(altus_active_widget_config)"
+    )
     if active:
         from modules.widget_manager.config_manager import save_config_as
+
         save_config_as(active)
 
 
@@ -341,7 +395,9 @@ def generate_and_reload(active_config=None):
     cm.close()
     widgets_xml = generate_widgets_xml(config)
     menu_xml = generate_main_menu_xml(config)
+    home_groups_xml = generate_home_groups_xml(config)
     _write_xml(WIDGETS_XML_FILE, widgets_xml)
     _write_xml(MAIN_MENU_XML_FILE, menu_xml)
+    _write_xml(HOME_GROUPS_XML_FILE, home_groups_xml)
     _auto_save_profile(active_config)
     Thread(target=_reload_skin).start()

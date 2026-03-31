@@ -112,12 +112,6 @@ def routing():
         xbmc.executebuiltin("Skin.SetString(altus_active_widget_config,%s)" % name)
         save_config_as(name)
         generate_and_reload(active_config=name)
-        xbmcgui.Dialog().notification(
-            "Altus",
-            'Created config "%s"' % name,
-            xbmcgui.NOTIFICATION_INFO,
-            3000,
-        )
         return
 
     if mode == "load_widget_config":
@@ -126,8 +120,7 @@ def routing():
         if not configs:
             xbmcgui.Dialog().ok(
                 "Load Widget Config",
-                "No other saved configs found.[CR][CR]"
-                "Create a new config first using New Widget Config.",
+                "No other saved configs found.[CR][CR]" "Create a new config first.",
             )
             return
         idx = xbmcgui.Dialog().select("Select config to load", configs)
@@ -153,12 +146,6 @@ def routing():
                 "Skin.SetString(altus_active_widget_config,%s)" % chosen
             )
             generate_and_reload(active_config=chosen)
-            xbmcgui.Dialog().notification(
-                "Altus",
-                'Loaded config "%s"' % chosen,
-                xbmcgui.NOTIFICATION_INFO,
-                3000,
-            )
         else:
             xbmcgui.Dialog().notification(
                 "Altus",
@@ -192,12 +179,6 @@ def routing():
         if rename_config(active, new_name):
             xbmc.executebuiltin(
                 "Skin.SetString(altus_active_widget_config,%s)" % new_name
-            )
-            xbmcgui.Dialog().notification(
-                "Altus",
-                'Renamed to "%s"' % new_name,
-                xbmcgui.NOTIFICATION_INFO,
-                3000,
             )
         else:
             xbmcgui.Dialog().notification(
@@ -236,12 +217,6 @@ def routing():
         create_default_sections()
         xbmc.executebuiltin("Skin.Reset(altus_active_widget_config)")
         generate_and_reload(active_config="")
-        xbmcgui.Dialog().notification(
-            "Altus",
-            "Default config loaded",
-            xbmcgui.NOTIFICATION_INFO,
-            3000,
-        )
         return
 
     if mode == "delete_widget_config":
@@ -281,7 +256,6 @@ def routing():
         return open_manager()
 
     if mode == "starting_widgets":
-        xbmcgui.Window(10000).setProperty("altus.starting_widgets", "true")
         cm = ConfigManager()
         config = cm.get_full_config()
         cm.close()
