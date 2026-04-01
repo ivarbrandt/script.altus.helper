@@ -55,10 +55,10 @@ def get_profile_count():
 
 
 def check_for_profile_change(skin_id):
-    if get_profile_count() <= 1:
-        return
     current_profile = getInfoLabel("System.ProfileName")
-    saved_profile = window.getProperty("%s.current_profile" % skin_id)
+    if get_profile_count() <= 1:
+        set_current_profile(skin_id, current_profile)
+        return
     try:
         with open(PROFILE_PATH, "r") as f:
             saved_profile = json.load(f)
