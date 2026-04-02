@@ -5,6 +5,7 @@ Reads config from ConfigManager and generates:
   - script-altus-widgets.xml      (per-section widget includes)
   - script-altus-main_menu.xml    (all sections as main menu items)
   - script-altus-home_groups.xml  (per-section group/grouplist structure)
+  - script-altus-submenus.xml     (per-section submenu lists for home screen)
 """
 import xbmc
 import xbmcgui
@@ -16,6 +17,7 @@ from modules.widget_manager.config_manager import ConfigManager
 WIDGETS_XML_FILE = "special://skin/xml/script-altus-widgets.xml"
 MAIN_MENU_XML_FILE = "special://skin/xml/script-altus-main_menu.xml"
 HOME_GROUPS_XML_FILE = "special://skin/xml/script-altus-home_groups.xml"
+SUBMENUS_XML_FILE = "special://skin/xml/script-altus-submenus.xml"
 # Base ID for all widget-related controls. Each section occupies a 100-ID range:
 #   section base = BASE_ID + (section_position - 1) * 100
 #   group = base, grouplist = base + 1, pagecontrol = base + 99
@@ -49,6 +51,11 @@ def _compute_grouplist_id(section_position):
 def _compute_pagecontrol_id(section_position):
     """Compute the pagecontrol (scrollbar) ID for a section."""
     return _compute_section_base(section_position) + 99
+
+
+def _compute_submenu_list_id(section_position):
+    """Compute the submenu list control ID for a section (base + 50)."""
+    return _compute_section_base(section_position) + 50
 
 
 def _compute_list_id(section_position, widget_position):
@@ -123,7 +130,7 @@ def _build_stacked_widget_xml(widget, list_id):
     )
 
 
-def _build_menu_item_xml(section, group_id):
+def _build_menu_item_xml(section, group_id, submenu_list_id=None):
     """Generate XML for a single main menu item.
 
     Each section automatically gets a visibility condition tied to its DB id,
@@ -145,16 +152,28 @@ def _build_menu_item_xml(section, group_id):
       <property name="id">weather</property>
     </item>"""
     else:
+        icon_prop = ""
+        if section.get("icon"):
+            icon_prop = '\n      <property name="icon">{icon}</property>'.format(
+                icon=section["icon"]
+            )
+        submenu_prop = ""
+        if submenu_list_id:
+            submenu_prop = '\n      <property name="submenu_id">$NUMBER[{id}]</property>'.format(
+                id=submenu_list_id
+            )
         xml = """
     <item>
       <label>{name}</label>
       <onclick>{onclick}</onclick>
       <property name="menu_id">$NUMBER[{menu_id}]</property>
-      <property name="id">widgets</property>
+      <property name="id">widgets</property>{icon_prop}{submenu_prop}
     </item>""".format(
             name=_escape_ampersand(section["name"]),
             onclick=_escape_ampersand(section["onclick"]),
             menu_id=group_id,
+            icon_prop=icon_prop,
+            submenu_prop=submenu_prop,
         )
     return xml
 
@@ -212,7 +231,16 @@ def generate_main_menu_xml(config):
         if section.get("visible") == "false":
             continue
         group_id = _compute_group_id(section["position"])
-        xml += _build_menu_item_xml(section, group_id)
+        # Check for visible submenus
+        visible_submenus = [
+            s for s in section_data.get("submenus", [])
+            if s.get("visible") != "false"
+        ]
+        submenu_list_id = (
+            _compute_submenu_list_id(section["position"])
+            if visible_submenus else None
+        )
+        xml += _build_menu_item_xml(section, group_id, submenu_list_id)
     xml += "\n  </include>\n</includes>"
     return xml
 
@@ -261,6 +289,73 @@ def generate_home_groups_xml(config):
             grouplist_id=grouplist_id,
             pagecontrol_id=pagecontrol_id,
             section_pos=section_pos,
+        )
+    xml += "\n  </include>\n</includes>"
+    return xml
+
+
+def generate_submenus_xml(config):
+    """Generate per-section submenu list includes for the home screen.
+
+    Each section with visible submenus gets a list at the same screen position,
+    with visibility tied to Container(9000).ListItem.Property(menu_id).
+    Only one submenu list is visible at a time.
+
+    Args:
+        config: dict from ConfigManager.get_full_config()
+    Returns:
+        XML string with the HomeSubmenus include.
+    """
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>\n  <include name="HomeSubmenus">'
+    for section_id in sorted(
+        config, key=lambda sid: config[sid]["section"]["position"]
+    ):
+        section_data = config[section_id]
+        section = section_data["section"]
+        if section.get("visible") == "false":
+            continue
+        if section["name"] == "Weather":
+            continue
+        submenus = [
+            s for s in section_data.get("submenus", [])
+            if s.get("visible") != "false"
+        ]
+        if not submenus:
+            continue
+        section_pos = section["position"]
+        group_id = _compute_group_id(section_pos)
+        submenu_list_id = _compute_submenu_list_id(section_pos)
+        # Build item entries for each submenu
+        items_xml = ""
+        for sub in submenus:
+            icon_prop = ""
+            if sub.get("icon"):
+                icon_prop = '\n          <property name="icon">{icon}</property>'.format(
+                    icon=sub["icon"]
+                )
+            items_xml += """
+        <item>
+          <label>{label}</label>
+          <onclick>{onclick}</onclick>{icon_prop}
+        </item>""".format(
+                label=_escape_ampersand(sub["label"]),
+                onclick=_escape_ampersand(sub.get("onclick", "")),
+                icon_prop=icon_prop,
+            )
+        xml += """
+    <control type="group">
+      <visible>String.IsEqual(Container(9000).ListItem.Property(menu_id),{group_id})</visible>
+      <control type="list" id="{submenu_list_id}">
+        <include content="SubmenuListCommon">
+          <param name="list_id" value="{submenu_list_id}"/>
+        </include>
+        <content>{items_xml}
+        </content>
+      </control>
+    </control>""".format(
+            group_id=group_id,
+            submenu_list_id=submenu_list_id,
+            items_xml=items_xml,
         )
     xml += "\n  </include>\n</includes>"
     return xml
@@ -396,8 +491,10 @@ def generate_and_reload(active_config=None):
     widgets_xml = generate_widgets_xml(config)
     menu_xml = generate_main_menu_xml(config)
     home_groups_xml = generate_home_groups_xml(config)
+    submenus_xml = generate_submenus_xml(config)
     _write_xml(WIDGETS_XML_FILE, widgets_xml)
     _write_xml(MAIN_MENU_XML_FILE, menu_xml)
     _write_xml(HOME_GROUPS_XML_FILE, home_groups_xml)
+    _write_xml(SUBMENUS_XML_FILE, submenus_xml)
     _auto_save_profile(active_config)
     Thread(target=_reload_skin).start()

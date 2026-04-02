@@ -250,6 +250,13 @@ class ConfigManager:
             (section_id,),
         ).fetchall()
 
+    def reorder_submenu(self, submenu_id, new_position):
+        row = self.dbcur.execute(
+            "SELECT section_id FROM submenus WHERE id = ?", (submenu_id,)
+        ).fetchone()
+        if row:
+            self._move_item("submenus", submenu_id, new_position, section_id=row["section_id"])
+
     # ── Config Snapshot ──
 
     def get_full_config(self):
