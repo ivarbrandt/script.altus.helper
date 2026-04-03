@@ -18,6 +18,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Movies",
         "onclick": "ActivateWindow(Videos,videodb://movies/titles/,return)",
+        "icon": "icons/sidemenu/movies.png",
         "widgets": [
             (
                 "Categories",
@@ -80,6 +81,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "TV Shows",
         "onclick": "ActivateWindow(Videos,videodb://tvshows/titles/,return)",
+        "icon": "icons/sidemenu/tv.png",
         "widgets": [
             (
                 "Categories",
@@ -134,6 +136,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Music",
         "onclick": "ActivateWindow(Music,root,return)",
+        "icon": "icons/sidemenu/music.png",
         "widgets": [
             (
                 "Categories",
@@ -196,6 +199,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Music Videos",
         "onclick": "ActivateWindow(Videos,musicvideos,return)",
+        "icon": "icons/sidemenu/musicvideos.png",
         "widgets": [
             (
                 "Categories",
@@ -250,6 +254,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Live TV",
         "onclick": "ActivateWindow(TVChannels)",
+        "icon": "icons/sidemenu/livetv.png",
         "widgets": [
             ("Categories", "pvr://tv/", "WidgetListCategory", "videos", "", ""),
             (
@@ -305,6 +310,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Radio",
         "onclick": "ActivateWindow(RadioChannels)",
+        "icon": "icons/sidemenu/radio.png",
         "widgets": [
             ("Categories", "pvr://radio/", "WidgetListCategory", "music", "", ""),
             (
@@ -360,6 +366,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Addons",
         "onclick": "ActivateWindow(AddonBrowser)",
+        "icon": "icons/sidemenu/addons.png",
         "widgets": [
             (
                 "Categories",
@@ -422,6 +429,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Pictures",
         "onclick": "ActivateWindow(Pictures)",
+        "icon": "icons/sidemenu/pictures.png",
         "widgets": [
             (
                 "Sources",
@@ -436,6 +444,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Videos",
         "onclick": "ActivateWindow(Videos,root)",
+        "icon": "icons/sidemenu/videos.png",
         "widgets": [
             (
                 "Categories",
@@ -466,6 +475,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Games",
         "onclick": "ActivateWindow(Games)",
+        "icon": "icons/sidemenu/games.png",
         "widgets": [
             (
                 "Game Addons",
@@ -480,6 +490,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Favourites",
         "onclick": "ActivateWindow(favouritesbrowser)",
+        "icon": "icons/sidemenu/favourites.png",
         "widgets": [
             ("Favourites", "favourites://", "WidgetListFavourites", "videos", "", ""),
         ],
@@ -487,6 +498,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "Weather",
         "onclick": "ActivateWindow(Weather)",
+        "icon": "icons/sidemenu/weather.png",
         "widgets": [],
     },
 ]
@@ -508,6 +520,7 @@ def create_default_sections():
         section_id = cm.add_section(
             name=section_data["name"],
             onclick=section_data["onclick"],
+            icon=section_data.get("icon", ""),
         )
         for label, path, display_type, target, sortby, sortorder in section_data[
             "widgets"

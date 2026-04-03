@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-import xbmc
-import xbmcgui
-import xbmcaddon
+import xbmc, xbmcaddon, xbmcvfs, xbmcgui
 import threading
 
 from modules.widget_manager.config_manager import ConfigManager
@@ -232,6 +230,58 @@ def _dim_label(text):
     return "[COLOR %s]%s[/COLOR]" % (HIDDEN_COLOR, text)
 
 
+
+
+class IconPickerDialog(xbmcgui.WindowXMLDialog):
+    """Grid dialog for picking an icon from built-in icon sets."""
+
+    PANEL_ID = 3000
+    HEADER_ID = 1
+    ACTION_PREVIOUS_MENU = 10
+    ACTION_NAV_BACK = 92
+
+    def __init__(self, *args, **kwargs):
+        self.icons = kwargs.pop("icons", [])
+        self.subfolder = kwargs.pop("subfolder", "")
+        self.icon_dir = kwargs.pop("icon_dir", "")
+        self.selected = None  # Result: icon path string, or None if cancelled
+        super().__init__(*args, **kwargs)
+
+    def onInit(self):
+        self.getControl(self.HEADER_ID).setLabel(
+            "Choose icon - %s" % self.subfolder.title()
+        )
+        is_mono = self.subfolder == "monochrome"
+        panel = self.getControl(self.PANEL_ID)
+        panel.reset()
+        items = []
+        for f in self.icons:
+            name = f.replace(".png", "").replace("-", " ").title()
+            li = xbmcgui.ListItem(name)
+            li.setArt({"icon": "%s%s" % (self.icon_dir, f)})
+            if is_mono:
+                li.setProperty("monochrome", "true")
+            items.append(li)
+        panel.addItems(items)
+        self.setFocusId(self.PANEL_ID)
+
+    def onClick(self, control_id):
+        if control_id == self.PANEL_ID:
+            panel = self.getControl(self.PANEL_ID)
+            idx = panel.getSelectedPosition()
+            if 0 <= idx < len(self.icons):
+                self.selected = "iconpicker/%s/%s" % (
+                    self.subfolder, self.icons[idx]
+                )
+            self.close()
+
+    def onAction(self, action):
+        action_id = action.getId()
+        if action_id in (self.ACTION_PREVIOUS_MENU, self.ACTION_NAV_BACK):
+            self.selected = None
+            self.close()
+
+
 class _ServiceMonitor(threading.Thread):
     """Background thread that polls list state while the window is open."""
 
@@ -251,8 +301,8 @@ class _ServiceMonitor(threading.Thread):
 
     def _check_state(self):
         w = self.window
-        # Don't interfere during reorder or submenu mode
-        if w.reorder_mode or w.submenu_mode:
+        # Don't interfere during reorder, submenu, or edit menu mode
+        if w.reorder_mode or w.submenu_mode or w.edit_menu_open:
             return
         # Detect section selection change → refresh widget list
         section_list = w.getControl(SECTION_LIST)
@@ -320,6 +370,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.submenu_section_id = None
         self.submenu_section_name = ""
         self.submenu_ids = []
+        # When entering submenu from edit menu, back returns to edit menu
+        self.edit_menu_return_sid = None
 
     def onInit(self):
         self.cm = ConfigManager()
@@ -501,40 +553,63 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
 
     # ── Edit Menu ──
 
-    def _open_edit_menu(self, target):
+    def _set_list_items(self, section_list, items):
+        """Replace list contents in-place — no reset, no flicker.
+
+        items: list of (label, properties_dict) tuples.
+        Reuses existing ListItems where possible, adds/removes as needed.
+        """
+        old_count = section_list.size()
+        new_count = len(items)
+        # Update existing items in-place
+        for i in range(min(old_count, new_count)):
+            label, props = items[i]
+            li = section_list.getListItem(i)
+            li.setLabel(label)
+            # Clear old properties then set new ones
+            for key in ("section_id", "submenu_id", "edit_option", "icon", "hidden"):
+                li.setProperty(key, "")
+            for key, val in props.items():
+                li.setProperty(key, val)
+        # Add new items if needed
+        for i in range(old_count, new_count):
+            label, props = items[i]
+            li = xbmcgui.ListItem(label)
+            for key, val in props.items():
+                li.setProperty(key, val)
+            section_list.addItem(li)
+        # Remove excess items from the end
+        for i in range(old_count - 1, new_count - 1, -1):
+            section_list.removeItem(i)
+
+    def _open_edit_menu(self, target, item_id=None):
         """Open the edit menu by populating options into the section list."""
-        menu = SECTION_EDIT_MENU if target == "section" else SUBMENU_EDIT_MENU
+        menu = list(SECTION_EDIT_MENU if target == "section" else SUBMENU_EDIT_MENU)
         self.edit_menu_open = True
         self.edit_menu_target = target
         self.setProperty("edit_menu_open", "true")
         self._clear_btn("section")
         # Remember which item we're editing
         if target == "section":
-            self.edit_menu_item_id = self._get_selected_section_id()
+            self.edit_menu_item_id = item_id or self._get_selected_section_id()
             section = self.config[self.edit_menu_item_id]["section"]
             header_label = section["name"]
             header_icon = section.get("icon", "")
+            # Weather sections don't support submenus
+            if section.get("name") == "Weather" and "submenu" in menu:
+                menu.remove("submenu")
         else:
-            self.edit_menu_item_id = self._get_selected_submenu_id()
+            self.edit_menu_item_id = item_id or self._get_selected_submenu_id()
             submenus = self.config[self.submenu_section_id]["submenus"]
             sub = next((s for s in submenus if s["id"] == self.edit_menu_item_id), {})
             header_label = sub.get("label", "")
             header_icon = sub.get("icon", "")
-        # Rebuild the list: header item + indented menu options
-        section_list = self.getControl(SECTION_LIST)
-        section_list.reset()
-        # Header item (the section/submenu being edited)
-        header = xbmcgui.ListItem("[B]%s[/B]" % header_label)
-        header.setProperty("edit_option", "")
-        header.setProperty("icon", header_icon)
-        section_list.addItem(header)
-        # Menu option items
+        # Build items: header + indented options
+        items = [("[B]%s[/B]" % header_label, {"edit_option": "", "icon": header_icon})]
         for key in menu:
-            li = xbmcgui.ListItem("    %s" % EDIT_MENU_LABELS[key])
-            li.setProperty("edit_option", key)
-            li.setProperty("icon", "")
-            section_list.addItem(li)
-        # Focus the first option (index 1, after the header)
+            items.append(("    %s" % EDIT_MENU_LABELS[key], {"edit_option": key, "icon": ""}))
+        section_list = self.getControl(SECTION_LIST)
+        self._set_list_items(section_list, items)
         section_list.selectItem(1)
         self.setFocusId(SECTION_LIST)
 
@@ -545,17 +620,14 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.edit_menu_target = None
         self.edit_menu_item_id = None
         self.clearProperty("edit_menu_open")
+        self._load_config()
         if self.submenu_mode:
-            self._load_config()
-            self._populate_submenus()
-            # Restore focus to the item we were editing
+            self._repopulate_submenus()
             if item_id and item_id in self.submenu_ids:
                 idx = self.submenu_ids.index(item_id)
                 self.getControl(SECTION_LIST).selectItem(idx)
         else:
-            self._load_config()
-            self._populate_sections()
-            # Restore focus to the section we were editing
+            self._repopulate_sections()
             if item_id and item_id in self.section_ids:
                 idx = self.section_ids.index(item_id)
                 self.getControl(SECTION_LIST).selectItem(idx)
@@ -564,6 +636,51 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.setFocusId(SECTION_LIST)
         edit_idx = SECTION_BUTTONS.index("edit")
         self._set_btn("section", edit_idx)
+
+    def _repopulate_sections(self):
+        """Rebuild section list in-place (no reset)."""
+        section_list = self.getControl(SECTION_LIST)
+        sorted_ids = sorted(
+            self.config, key=lambda sid: self.config[sid]["section"]["position"]
+        )
+        items = []
+        new_ids = []
+        for sid in sorted_ids:
+            section = self.config[sid]["section"]
+            name = section["name"]
+            hidden = section.get("visible") == "false"
+            label = _dim_label(name) if hidden else name
+            props = {
+                "section_id": str(sid),
+                "hidden": "true" if hidden else "",
+                "icon": section.get("icon", ""),
+            }
+            items.append((label, props))
+            new_ids.append(sid)
+        self._set_list_items(section_list, items)
+        self.section_ids = new_ids
+        if self.section_ids:
+            if self.current_section_id not in self.section_ids:
+                self.current_section_id = self.section_ids[0]
+
+    def _repopulate_submenus(self):
+        """Rebuild submenu list in-place (no reset)."""
+        section_list = self.getControl(SECTION_LIST)
+        submenus = self.config.get(self.submenu_section_id, {}).get("submenus", [])
+        items = []
+        new_ids = []
+        for sub in submenus:
+            hidden = sub.get("visible") == "false"
+            label = _dim_label(sub["label"]) if hidden else sub["label"]
+            props = {
+                "submenu_id": str(sub["id"]),
+                "hidden": "true" if hidden else "",
+                "icon": sub.get("icon", ""),
+            }
+            items.append((label, props))
+            new_ids.append(sub["id"])
+        self._set_list_items(section_list, items)
+        self.submenu_ids = new_ids
 
     def _activate_edit_menu(self):
         """Execute the clicked edit menu option."""
@@ -575,23 +692,54 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             return  # Clicked the header, do nothing
         target = self.edit_menu_target
         item_id = self.edit_menu_item_id
-        self._close_edit_menu()
         if target == "section":
             if option == "submenu":
+                # Go straight to submenu mode — no intermediate rebuild
+                self.edit_menu_open = False
+                self.edit_menu_target = None
+                self.edit_menu_item_id = None
+                self.clearProperty("edit_menu_open")
+                self.edit_menu_return_sid = item_id
                 self._enter_submenu_mode(sid=item_id)
             elif option == "rename":
                 self._rename_section(sid=item_id)
+                self._refresh_edit_menu_header()
             elif option == "edit_onclick":
                 self._edit_section_onclick(sid=item_id)
+                self._refresh_edit_menu_header()
             elif option == "icon":
                 self._pick_section_icon(sid=item_id)
+                self._refresh_edit_menu_header()
         else:  # submenu
             if option == "rename":
                 self._rename_submenu(sub_id=item_id)
+                self._refresh_edit_menu_header()
             elif option == "edit_onclick":
                 self._edit_submenu_onclick(sub_id=item_id)
+                self._refresh_edit_menu_header()
             elif option == "icon":
                 self._pick_submenu_icon(sub_id=item_id)
+                self._refresh_edit_menu_header()
+
+    def _refresh_edit_menu_header(self):
+        """Update the edit menu header in-place after a rename/icon change."""
+        if not self.edit_menu_open:
+            return
+        self._load_config()
+        item_id = self.edit_menu_item_id
+        target = self.edit_menu_target
+        if target == "section":
+            section = self.config.get(item_id, {}).get("section", {})
+            header_label = section.get("name", "")
+            header_icon = section.get("icon", "")
+        else:
+            submenus = self.config.get(self.submenu_section_id, {}).get("submenus", [])
+            sub = next((s for s in submenus if s["id"] == item_id), {})
+            header_label = sub.get("label", "")
+            header_icon = sub.get("icon", "")
+        header = self.getControl(SECTION_LIST).getListItem(0)
+        header.setLabel("[B]%s[/B]" % header_label)
+        header.setProperty("icon", header_icon)
 
     def _activate_btn(self, target):
         """Execute the currently highlighted button's action."""
@@ -666,7 +814,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         pos_after = None
         if current and current in self.config:
             pos_after = self.config[current]["section"]["position"]
-        section_id = self.cm.add_section(name=name, onclick=onclick)
+        icon = result.get("thumbnail", "")
+        section_id = self.cm.add_section(name=name, onclick=onclick, icon=icon)
         if pos_after is not None:
             self.cm.reorder_section(section_id, pos_after + 1)
         self.changed = True
@@ -674,6 +823,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         insert_idx = current_idx + 1
         li = xbmcgui.ListItem(name)
         li.setProperty("section_id", str(section_id))
+        li.setProperty("icon", icon)
         section_list = self.getControl(SECTION_LIST)
         section_list.addItem(li)
         # Move from end to correct position by swapping
@@ -691,7 +841,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         if sid is None:
             return
         name = self.config[sid]["section"]["name"]
-        if not self._confirm("Delete section '%s' and all its widgets?" % name):
+        if not self._confirm("Delete '%s' ?[CR][CR][COLOR red][B]WARNING:[/B][/COLOR] This cannot be undone." % name):
             return
         del_idx = self.section_ids.index(sid) if sid in self.section_ids else 0
         self.cm.remove_section(sid)
@@ -720,9 +870,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             return
         self.cm.update_section(sid, name=new_name)
         self.changed = True
-        # Update label in-place
-        idx = self.section_ids.index(sid) if sid in self.section_ids else -1
-        if idx >= 0:
+        # Update label in-place (skip when edit menu owns the list)
+        if not self.edit_menu_open and sid in self.section_ids:
+            idx = self.section_ids.index(sid)
             self.getControl(SECTION_LIST).getListItem(idx).setLabel(new_name)
         self._load_config()
 
@@ -737,8 +887,12 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         onclick = path_browser.build_onclick(
             result["path"], result.get("target", "videos")
         )
-        self.cm.update_section(sid, onclick=onclick)
+        icon = result.get("thumbnail", "")
+        self.cm.update_section(sid, onclick=onclick, icon=icon)
         self.changed = True
+        if not self.edit_menu_open and sid in self.section_ids:
+            idx = self.section_ids.index(sid)
+            self.getControl(SECTION_LIST).getListItem(idx).setProperty("icon", icon)
         self._load_config()
 
     def _pick_section_icon(self, sid=None):
@@ -752,27 +906,40 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             return
         self.cm.update_section(sid, icon=icon)
         self.changed = True
-        idx = self.section_ids.index(sid) if sid in self.section_ids else -1
-        if idx >= 0:
+        if not self.edit_menu_open and sid in self.section_ids:
+            idx = self.section_ids.index(sid)
             self.getControl(SECTION_LIST).getListItem(idx).setProperty("icon", icon)
         self._load_config()
 
     def _pick_icon(self):
         """Show icon picker dialog. Returns icon path string or None if cancelled."""
-        import xbmcvfs
-
-        icon_dir = "special://skin/media/icons/submenu/"
-        _, files = xbmcvfs.listdir(icon_dir)
-        files = sorted([f for f in files if f.lower().endswith(".png")])
-        names = ["None"] + [
-            f.replace(".png", "").replace("-", " ").title() for f in files
-        ]
-        idx = self._select("Icon", names)
+        choices = ["None", "Monochrome", "Color", "Browse..."]
+        idx = self._select("Icon", choices)
         if idx is None or idx < 0:
             return None
         if idx == 0:
             return ""
-        return "icons/submenu/%s" % files[idx - 1]
+        if idx == 3:
+            # Browse for a custom image
+            path = xbmcgui.Dialog().browse(2, "Choose icon", "files", ".png|.jpg|.gif")
+            if not path:
+                return None
+            return path
+        # Monochrome or Color subfolder
+        subfolder = "monochrome" if idx == 1 else "color"
+        icon_dir = "special://skin/media/iconpicker/%s/" % subfolder
+        _, files = xbmcvfs.listdir(icon_dir)
+        files = sorted([f for f in files if f.lower().endswith(".png")])
+        if not files:
+            return None
+        picker = IconPickerDialog(
+            "DialogIconPicker.xml", SKIN_PATH, "default", "1080i",
+            icons=files, subfolder=subfolder, icon_dir=icon_dir,
+        )
+        picker.doModal()
+        result = picker.selected
+        del picker
+        return result
 
     # ── Submenu Mode ──
 
@@ -788,7 +955,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.setProperty("submenu_mode", "true")
         self.setProperty("submenu_header", "Edit submenu for %s" % name)
         self.setProperty("add_section_label", "Add submenu item...")
-        self._populate_submenus()
+        self._repopulate_submenus()
         if self.submenu_ids:
             self.getControl(SECTION_LIST).selectItem(0)
             self.setFocusId(SECTION_LIST)
@@ -801,25 +968,32 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
     def _exit_submenu_mode(self):
         # Remember which section we were editing
         restore_sid = self.submenu_section_id
+        return_sid = self.edit_menu_return_sid
         self.submenu_mode = False
         self.submenu_section_id = None
         self.submenu_section_name = ""
         self.submenu_ids = []
+        self.edit_menu_return_sid = None
         self.clearProperty("submenu_mode")
         self.clearProperty("submenu_header")
         self.setProperty("add_section_label", "Add Section...")
         self._load_config()
-        self._populate_sections()
-        # Restore focus to the section we were editing
-        if restore_sid and restore_sid in self.section_ids:
-            idx = self.section_ids.index(restore_sid)
-            self.getControl(SECTION_LIST).selectItem(idx)
-            self.current_section_id = restore_sid
-            self._update_widgets_inline()
-        self.setFocusId(SECTION_LIST)
-        self._set_btn("section", 0)
+        # If we entered submenu from the edit menu, go straight back to it
+        if return_sid:
+            self.current_section_id = return_sid
+            self._open_edit_menu("section", item_id=return_sid)
+        else:
+            self._repopulate_sections()
+            if restore_sid and restore_sid in self.section_ids:
+                idx = self.section_ids.index(restore_sid)
+                self.getControl(SECTION_LIST).selectItem(idx)
+                self.current_section_id = restore_sid
+                self._update_widgets_inline()
+            self.setFocusId(SECTION_LIST)
+            self._set_btn("section", 0)
 
     def _populate_submenus(self):
+        """Full populate with reset — only for initial load."""
         section_list = self.getControl(SECTION_LIST)
         section_list.reset()
         self.submenu_ids = []
@@ -868,7 +1042,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 if s["id"] == self.submenu_ids[current_idx]:
                     pos_after = s["position"]
                     break
-        new_id = self.cm.add_submenu(self.submenu_section_id, label, onclick=onclick)
+        icon = result.get("thumbnail", "")
+        new_id = self.cm.add_submenu(self.submenu_section_id, label, onclick=onclick, icon=icon)
         if pos_after is not None:
             self.cm.reorder_submenu(new_id, pos_after + 1)
         self.changed = True
@@ -878,13 +1053,13 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         li = xbmcgui.ListItem(label)
         li.setProperty("submenu_id", str(new_id))
         li.setProperty("hidden", "")
-        li.setProperty("icon", "")
+        li.setProperty("icon", icon)
         section_list = self.getControl(SECTION_LIST)
         section_list.addItem(li)
         self.submenu_ids.append(new_id)
         # Rebuild to get correct positions
         self._load_config()
-        self._populate_submenus()
+        self._repopulate_submenus()
         # Select the new item
         new_idx = self.submenu_ids.index(new_id) if new_id in self.submenu_ids else 0
         section_list.selectItem(new_idx)
@@ -899,8 +1074,6 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         sub = next((s for s in submenus if s["id"] == sub_id), None)
         if not sub:
             return
-        if not self._confirm("Delete submenu item '%s'?" % sub["label"]):
-            return
         idx = self.submenu_ids.index(sub_id)
         self.cm.remove_submenu(sub_id)
         self.changed = True
@@ -912,6 +1085,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             new_idx = min(idx, len(self.submenu_ids) - 1)
             self.getControl(SECTION_LIST).selectItem(new_idx)
         else:
+            self._clear_btn("section")
+            xbmc.sleep(50)
             self.setFocusId(ADD_SECTION_BTN)
 
     def _rename_submenu(self, sub_id=None):
@@ -928,8 +1103,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             return
         self.cm.update_submenu(sub_id, label=new_name)
         self.changed = True
-        idx = self.submenu_ids.index(sub_id)
-        self.getControl(SECTION_LIST).getListItem(idx).setLabel(new_name)
+        if not self.edit_menu_open and sub_id in self.submenu_ids:
+            idx = self.submenu_ids.index(sub_id)
+            self.getControl(SECTION_LIST).getListItem(idx).setLabel(new_name)
         self._load_config()
 
     def _edit_submenu_onclick(self, sub_id=None):
@@ -943,8 +1119,12 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         onclick = path_browser.build_onclick(
             result["path"], result.get("target", "videos")
         )
-        self.cm.update_submenu(sub_id, onclick=onclick)
+        icon = result.get("thumbnail", "")
+        self.cm.update_submenu(sub_id, onclick=onclick, icon=icon)
         self.changed = True
+        if not self.edit_menu_open and sub_id in self.submenu_ids:
+            idx = self.submenu_ids.index(sub_id)
+            self.getControl(SECTION_LIST).getListItem(idx).setProperty("icon", icon)
         self._load_config()
 
     def _pick_submenu_icon(self, sub_id=None):
@@ -957,8 +1137,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             return
         self.cm.update_submenu(sub_id, icon=icon)
         self.changed = True
-        idx = self.submenu_ids.index(sub_id) if sub_id in self.submenu_ids else -1
-        if idx >= 0:
+        if not self.edit_menu_open and sub_id in self.submenu_ids:
+            idx = self.submenu_ids.index(sub_id)
             self.getControl(SECTION_LIST).getListItem(idx).setProperty("icon", icon)
         self._load_config()
 
@@ -1102,6 +1282,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         if self.widget_ids:
             focus_idx = min(del_idx, len(self.widget_ids) - 1)
             widget_list.selectItem(focus_idx)
+        else:
+            self._clear_btn("widget")
+            xbmc.sleep(50)
+            self.setFocusId(ADD_WIDGET_BTN)
         self._load_config()
 
     def _edit_widget_field(self, field, control_id):
@@ -1461,11 +1645,13 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             if self.edit_menu_open:
                 self._activate_edit_menu()
                 return
-            if self.reorder_mode and self.reorder_target == "section":
+            if self.reorder_mode and self.reorder_target in ("section", "submenu"):
                 self.reorder_mode = False
                 self.reorder_target = None
                 self.reorder_item_id = None
                 self.clearProperty("reorder_sections")
+                reorder_idx = SECTION_BUTTONS.index("reorder")
+                self._set_btn("section", reorder_idx)
                 return
             if self.section_btn_idx >= 0:
                 self._activate_btn("section")
@@ -1518,13 +1704,13 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 self._toggle_widget_visibility()
                 return
 
-        # Edit menu: back closes it, block left/right navigation
+        # Edit menu: back closes it, block left/right, block scrolling into header
         if self.edit_menu_open:
             if action_id in (ACTION_PREVIOUS_MENU, ACTION_NAV_BACK):
                 self._close_edit_menu()
                 return
             if action_id in (ACTION_MOVE_LEFT, ACTION_MOVE_RIGHT):
-                return  # Block horizontal navigation
+                return
 
         # Close dialog / exit submenu mode
         if action_id in (ACTION_PREVIOUS_MENU, ACTION_NAV_BACK):

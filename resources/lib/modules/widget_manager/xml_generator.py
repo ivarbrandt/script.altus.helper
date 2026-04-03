@@ -150,6 +150,7 @@ def _build_menu_item_xml(section, group_id, submenu_list_id=None):
       <onclick condition="String.IsEmpty(Weather.Plugin)">ReplaceWindow(servicesettings,weather)</onclick>
       <property name="menu_id">$NUMBER[15000]</property>
       <property name="id">weather</property>
+      <property name="icon">icons/sidemenu/weather.png</property>
     </item>"""
     else:
         icon_prop = ""
@@ -465,13 +466,17 @@ def _auto_save_profile(active_config=None):
     """Auto-save the active widget config to its profile file.
 
     Args:
-        active_config: explicit profile name to save as. When provided, this
-            avoids reading the skin string (which is set asynchronously and
-            may still hold the previous value).
+        active_config: explicit profile name to save as. When provided
+            (even as empty string), this avoids reading the skin string
+            (which is set asynchronously and may still hold a stale value).
+            Pass None to read from the skin string, "" to skip saving.
     """
-    active = active_config or xbmc.getInfoLabel(
-        "Skin.String(altus_active_widget_config)"
-    )
+    if active_config is not None:
+        active = active_config
+    else:
+        active = xbmc.getInfoLabel(
+            "Skin.String(altus_active_widget_config)"
+        )
     if active:
         from modules.widget_manager.config_manager import save_config_as
 
