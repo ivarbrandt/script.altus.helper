@@ -139,7 +139,7 @@ def _build_menu_item_xml(section, group_id, submenu_list_id=None):
     menu_id is the group ID so SetFocus cascades to the grouplist inside,
     matching how weather (15000) works.
     """
-    if section["name"] == "Weather":
+    if section["name"] == "$LOCALIZE[8]":
         xml = """
     <item>
       <label>$LOCALIZE[8]</label>
@@ -195,7 +195,7 @@ def generate_widgets_xml(config):
         section = section_data["section"]
         if section.get("visible") == "false":
             continue
-        if section["name"] == "Weather":
+        if section["name"] == "$LOCALIZE[8]":
             continue
         widgets = section_data["widgets"]
         if not widgets:
@@ -265,7 +265,7 @@ def generate_home_groups_xml(config):
         section = section_data["section"]
         if section.get("visible") == "false":
             continue
-        if section["name"] == "Weather":
+        if section["name"] == "$LOCALIZE[8]":
             continue
         section_pos = section["position"]
         group_id = _compute_group_id(section_pos)
@@ -315,7 +315,7 @@ def generate_submenus_xml(config):
         section = section_data["section"]
         if section.get("visible") == "false":
             continue
-        if section["name"] == "Weather":
+        if section["name"] == "$LOCALIZE[8]":
             continue
         submenus = [
             s for s in section_data.get("submenus", [])

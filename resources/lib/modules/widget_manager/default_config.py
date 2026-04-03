@@ -16,12 +16,12 @@ from modules.widget_manager.config_manager import ConfigManager
 # Each widget: (label, path, display_type, target, sortby, sortorder)
 DEFAULT_SECTIONS = [
     {
-        "name": "Movies",
+        "name": "$LOCALIZE[342]",
         "onclick": "ActivateWindow(Videos,videodb://movies/titles/,return)",
         "icon": "icons/sidemenu/movies.png",
         "widgets": [
             (
-                "Categories",
+                "$LOCALIZE[31148]",
                 "library://video/movies/",
                 "WidgetListCategory",
                 "videos",
@@ -29,7 +29,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "In Progress",
+                "$LOCALIZE[31010]",
                 "special://skin/playlists/inprogress_movies.xsp",
                 "WidgetListPoster",
                 "videos",
@@ -37,7 +37,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Recently Added",
+                "$LOCALIZE[20386]",
                 "special://skin/playlists/recent_unwatched_movies.xsp",
                 "WidgetListPoster",
                 "videos",
@@ -45,7 +45,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Unwatched",
+                "$LOCALIZE[31007]",
                 "special://skin/playlists/unwatched_movies.xsp",
                 "WidgetListPoster",
                 "videos",
@@ -53,7 +53,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Random",
+                "$LOCALIZE[31006]",
                 "special://skin/playlists/random_movies.xsp",
                 "WidgetListPoster",
                 "videos",
@@ -61,7 +61,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Genres",
+                "$LOCALIZE[135]",
                 "videodb://movies/genres/",
                 "WidgetListCategory",
                 "videos",
@@ -69,7 +69,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Sets",
+                "$LOCALIZE[31075]",
                 "videodb://movies/sets/",
                 "WidgetListPoster",
                 "videos",
@@ -79,12 +79,12 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "TV Shows",
+        "name": "$LOCALIZE[20343]",
         "onclick": "ActivateWindow(Videos,videodb://tvshows/titles/,return)",
         "icon": "icons/sidemenu/tv.png",
         "widgets": [
             (
-                "Categories",
+                "$LOCALIZE[31148]",
                 "library://video/tvshows/",
                 "WidgetListCategory",
                 "videos",
@@ -92,7 +92,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "In Progress",
+                "$LOCALIZE[626]",
                 "videodb://inprogresstvshows/",
                 "WidgetListPoster",
                 "videos",
@@ -100,7 +100,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Recently Added Episodes",
+                "$LOCALIZE[20387]",
                 "special://skin/playlists/recent_unwatched_episodes.xsp",
                 "WidgetListLandscape",
                 "videos",
@@ -108,7 +108,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Unwatched",
+                "$LOCALIZE[31122]",
                 "special://skin/playlists/unwatched_tvshows.xsp",
                 "WidgetListPoster",
                 "videos",
@@ -116,7 +116,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Genres",
+                "$LOCALIZE[135]",
                 "videodb://tvshows/genres/",
                 "WidgetListCategory",
                 "videos",
@@ -124,7 +124,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Studios",
+                "$LOCALIZE[20388]",
                 "videodb://tvshows/studios/",
                 "WidgetListCategory",
                 "videos",
@@ -134,12 +134,12 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Music",
+        "name": "$LOCALIZE[2]",
         "onclick": "ActivateWindow(Music,root,return)",
         "icon": "icons/sidemenu/music.png",
         "widgets": [
             (
-                "Categories",
+                "$LOCALIZE[31148]",
                 "library://music/",
                 "WidgetListCategory",
                 "music",
@@ -147,7 +147,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Recently Played",
+                "$LOCALIZE[517]",
                 "musicdb://recentlyplayedalbums/",
                 "WidgetListSquare",
                 "music",
@@ -155,7 +155,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Recently Added",
+                "$LOCALIZE[359]",
                 "musicdb://recentlyaddedalbums/",
                 "WidgetListSquare",
                 "music",
@@ -163,7 +163,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Random Albums",
+                "$LOCALIZE[31012]",
                 "special://skin/playlists/random_albums.xsp",
                 "WidgetListSquare",
                 "music",
@@ -171,7 +171,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Random Artists",
+                "$LOCALIZE[31013]",
                 "special://skin/playlists/random_artists.xsp",
                 "WidgetListSquare",
                 "music",
@@ -179,7 +179,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Unplayed Albums",
+                "$LOCALIZE[31014]",
                 "special://skin/playlists/unplayed_albums.xsp",
                 "WidgetListSquare",
                 "music",
@@ -187,7 +187,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Most Played",
+                "$LOCALIZE[31011]",
                 "special://skin/playlists/mostplayed_albums.xsp",
                 "WidgetListSquare",
                 "music",
@@ -197,12 +197,12 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Music Videos",
+        "name": "$LOCALIZE[20389]",
         "onclick": "ActivateWindow(Videos,musicvideos,return)",
         "icon": "icons/sidemenu/musicvideos.png",
         "widgets": [
             (
-                "Categories",
+                "$LOCALIZE[31148]",
                 "library://video/musicvideos/",
                 "WidgetListCategory",
                 "videos",
@@ -210,7 +210,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Recently Added",
+                "$LOCALIZE[20390]",
                 "videodb://recentlyaddedmusicvideos/",
                 "WidgetListLandscape",
                 "videos",
@@ -218,7 +218,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Unwatched",
+                "$LOCALIZE[31151]",
                 "special://skin/playlists/unwatched_musicvideos.xsp",
                 "WidgetListLandscape",
                 "videos",
@@ -226,7 +226,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Random Artists",
+                "$LOCALIZE[31013]",
                 "special://skin/playlists/random_musicvideo_artists.xsp",
                 "WidgetListSquare",
                 "music",
@@ -234,7 +234,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Random Music Videos",
+                "$LOCALIZE[31152]",
                 "special://skin/playlists/random_musicvideos.xsp",
                 "WidgetListLandscape",
                 "videos",
@@ -242,7 +242,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Studios",
+                "$LOCALIZE[20388]",
                 "videodb://musicvideos/studios/",
                 "WidgetListCategory",
                 "music",
@@ -252,13 +252,13 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Live TV",
+        "name": "$LOCALIZE[19020]",
         "onclick": "ActivateWindow(TVChannels)",
         "icon": "icons/sidemenu/livetv.png",
         "widgets": [
-            ("Categories", "pvr://tv/", "WidgetListCategory", "videos", "", ""),
+            ("$LOCALIZE[31148]", "pvr://tv/", "WidgetListCategory", "videos", "", ""),
             (
-                "Recent Channels",
+                "$LOCALIZE[31016]",
                 "pvr://channels/tv/*?view=lastplayed",
                 "WidgetListPVR",
                 "tvchannels",
@@ -266,7 +266,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Recordings",
+                "$LOCALIZE[31015]",
                 "pvr://recordings/tv/active?view=flat",
                 "WidgetListPVR",
                 "tvrecordings",
@@ -274,7 +274,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Timers",
+                "$LOCALIZE[19040]",
                 "pvr://timers/tv/timers/?view=hidedisabled",
                 "WidgetListPVR",
                 "tvtimers",
@@ -282,7 +282,7 @@ DEFAULT_SECTIONS = [
                 "ascending",
             ),
             (
-                "Channel Groups",
+                "$LOCALIZE[19173]",
                 "pvr://channels/tv",
                 "WidgetListSquare",
                 "tvguide",
@@ -290,7 +290,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Saved Searches",
+                "$LOCALIZE[19337]",
                 "pvr://search/tv/savedsearches",
                 "WidgetListSquare",
                 "tvsearch",
@@ -298,7 +298,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "New Channels",
+                "$LOCALIZE[855]",
                 "pvr://channels/tv/*?view=dateadded",
                 "WidgetListPVR",
                 "tvchannels",
@@ -308,13 +308,13 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Radio",
+        "name": "$LOCALIZE[19021]",
         "onclick": "ActivateWindow(RadioChannels)",
         "icon": "icons/sidemenu/radio.png",
         "widgets": [
-            ("Categories", "pvr://radio/", "WidgetListCategory", "music", "", ""),
+            ("$LOCALIZE[31148]", "pvr://radio/", "WidgetListCategory", "music", "", ""),
             (
-                "Recent Channels",
+                "$LOCALIZE[31018]",
                 "pvr://channels/radio/*?view=lastplayed",
                 "WidgetListPVR",
                 "radiochannels",
@@ -322,7 +322,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Recordings",
+                "$LOCALIZE[31015]",
                 "pvr://recordings/radio/active?view=flat",
                 "WidgetListPVR",
                 "radiorecordings",
@@ -330,7 +330,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Timers",
+                "$LOCALIZE[19040]",
                 "pvr://timers/radio/timers/?view=hidedisabled",
                 "WidgetListPVR",
                 "radiotimers",
@@ -338,7 +338,7 @@ DEFAULT_SECTIONS = [
                 "ascending",
             ),
             (
-                "Channel Groups",
+                "$LOCALIZE[19174]",
                 "pvr://channels/radio",
                 "WidgetListSquare",
                 "radioguide",
@@ -346,7 +346,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Saved Searches",
+                "$LOCALIZE[19337]",
                 "pvr://search/radio/savedsearches",
                 "WidgetListSquare",
                 "radiosearch",
@@ -354,7 +354,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "New Channels",
+                "$LOCALIZE[855]",
                 "pvr://channels/radio/*?view=dateadded",
                 "WidgetListPVR",
                 "radiochannels",
@@ -364,12 +364,12 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Addons",
+        "name": "$LOCALIZE[24001]",
         "onclick": "ActivateWindow(AddonBrowser)",
         "icon": "icons/sidemenu/addons.png",
         "widgets": [
             (
-                "Categories",
+                "$LOCALIZE[31148]",
                 "addons://",
                 "WidgetListCategory",
                 "addonbrowser",
@@ -377,7 +377,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Video Addons",
+                "$LOCALIZE[1037]",
                 "addons://sources/video/",
                 "WidgetListSquare",
                 "videos",
@@ -385,7 +385,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Music Addons",
+                "$LOCALIZE[1038]",
                 "addons://sources/audio/",
                 "WidgetListSquare",
                 "music",
@@ -393,7 +393,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Game Addons",
+                "$LOCALIZE[35049]",
                 "addons://sources/game/",
                 "WidgetListSquare",
                 "games",
@@ -401,7 +401,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Program Addons",
+                "$LOCALIZE[1043]",
                 "addons://sources/executable/",
                 "WidgetListSquare",
                 "programs",
@@ -409,7 +409,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Android Apps",
+                "$LOCALIZE[20244]",
                 "androidapp://sources/apps/",
                 "WidgetListSquare",
                 "programs",
@@ -417,7 +417,7 @@ DEFAULT_SECTIONS = [
                 "descending",
             ),
             (
-                "Picture Addons",
+                "$LOCALIZE[1039]",
                 "addons://sources/image/",
                 "WidgetListSquare",
                 "pictures",
@@ -427,12 +427,12 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Pictures",
+        "name": "$LOCALIZE[1]",
         "onclick": "ActivateWindow(Pictures)",
         "icon": "icons/sidemenu/pictures.png",
         "widgets": [
             (
-                "Sources",
+                "$LOCALIZE[20094]",
                 "sources://pictures/",
                 "WidgetListCategory",
                 "pictures",
@@ -442,12 +442,12 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Videos",
+        "name": "$LOCALIZE[3]",
         "onclick": "ActivateWindow(Videos,root)",
         "icon": "icons/sidemenu/videos.png",
         "widgets": [
             (
-                "Categories",
+                "$LOCALIZE[31148]",
                 "library://video/",
                 "WidgetListCategory",
                 "videos",
@@ -455,7 +455,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Sources",
+                "$LOCALIZE[20094]",
                 "sources://video/",
                 "WidgetListCategory",
                 "videos",
@@ -463,7 +463,7 @@ DEFAULT_SECTIONS = [
                 "",
             ),
             (
-                "Playlists",
+                "$LOCALIZE[136]",
                 "special://videoplaylists/",
                 "WidgetListCategory",
                 "videos",
@@ -473,12 +473,12 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Games",
+        "name": "$LOCALIZE[15016]",
         "onclick": "ActivateWindow(Games)",
         "icon": "icons/sidemenu/games.png",
         "widgets": [
             (
-                "Game Addons",
+                "$LOCALIZE[35049]",
                 "addons://sources/game/",
                 "WidgetListSquare",
                 "games",
@@ -488,15 +488,15 @@ DEFAULT_SECTIONS = [
         ],
     },
     {
-        "name": "Favourites",
+        "name": "$LOCALIZE[10134]",
         "onclick": "ActivateWindow(favouritesbrowser)",
         "icon": "icons/sidemenu/favourites.png",
         "widgets": [
-            ("Favourites", "favourites://", "WidgetListFavourites", "videos", "", ""),
+            ("$LOCALIZE[10134]", "favourites://", "WidgetListFavourites", "videos", "", ""),
         ],
     },
     {
-        "name": "Weather",
+        "name": "$LOCALIZE[8]",
         "onclick": "ActivateWindow(Weather)",
         "icon": "icons/sidemenu/weather.png",
         "widgets": [],

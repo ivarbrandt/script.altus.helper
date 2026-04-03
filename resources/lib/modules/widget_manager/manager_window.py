@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+import re
 import xbmc, xbmcaddon, xbmcvfs, xbmcgui
 import threading
+import time
 
 from modules.widget_manager.config_manager import ConfigManager
 from modules.widget_manager.xml_generator import generate_and_reload
@@ -225,6 +227,14 @@ def _friendly(internal_name):
     return internal_name
 
 
+_LOCALIZE_RE = re.compile(r'\$LOCALIZE\[(\d+)\]')
+
+
+def _resolve_localize(text):
+    """Resolve $LOCALIZE[N] tokens to their localized strings."""
+    return _LOCALIZE_RE.sub(lambda m: xbmc.getLocalizedString(int(m.group(1))), text)
+
+
 def _dim_label(text):
     """Wrap text in a dim color tag for hidden items."""
     return "[COLOR %s]%s[/COLOR]" % (HIDDEN_COLOR, text)
@@ -233,53 +243,136 @@ def _dim_label(text):
 
 
 class IconPickerDialog(xbmcgui.WindowXMLDialog):
-    """Grid dialog for picking an icon from built-in icon sets."""
+    """Grid dialog for picking an icon with folder browsing."""
 
     PANEL_ID = 3000
+    FOLDER_LIST_ID = 3001
     HEADER_ID = 1
     ACTION_PREVIOUS_MENU = 10
     ACTION_NAV_BACK = 92
+    BASE_DIR = "special://skin/media/iconpicker/monochrome/"
 
     def __init__(self, *args, **kwargs):
-        self.icons = kwargs.pop("icons", [])
-        self.subfolder = kwargs.pop("subfolder", "")
-        self.icon_dir = kwargs.pop("icon_dir", "")
-        self.selected = None  # Result: icon path string, or None if cancelled
+        self.selected = None
+        self.folders = []
+        self.current_icons = []
+        self.current_folder_idx = -1
+        self.monitor = None
         super().__init__(*args, **kwargs)
 
     def onInit(self):
-        self.getControl(self.HEADER_ID).setLabel(
-            "Choose icon - %s" % self.subfolder.title()
+        dirs, _ = xbmcvfs.listdir(self.BASE_DIR)
+        self.folders = sorted(dirs)
+        if not self.folders:
+            self.close()
+            return
+        folder_list = self.getControl(self.FOLDER_LIST_ID)
+        folder_list.reset()
+        items = []
+        for d in self.folders:
+            li = xbmcgui.ListItem(d)
+            items.append(li)
+        folder_list.addItems(items)
+        self._load_folder(0)
+        self.setFocusId(self.FOLDER_LIST_ID)
+        self.monitor = _IconFolderMonitor(self)
+        self.monitor.start()
+
+    def _load_folder(self, idx):
+        if idx == self.current_folder_idx:
+            return
+        folder = self.folders[idx]
+        folder_path = self.BASE_DIR + folder + "/"
+        _, files = xbmcvfs.listdir(folder_path)
+        self.current_icons = sorted(
+            [f for f in files if f.lower().endswith(".png")]
         )
-        is_mono = self.subfolder == "monochrome"
+        self.current_folder_idx = idx
+        self.getControl(self.HEADER_ID).setLabel(
+            "Choose icon - %s" % folder
+        )
         panel = self.getControl(self.PANEL_ID)
         panel.reset()
         items = []
-        for f in self.icons:
+        for f in self.current_icons:
             name = f.replace(".png", "").replace("-", " ").title()
             li = xbmcgui.ListItem(name)
-            li.setArt({"icon": "%s%s" % (self.icon_dir, f)})
-            if is_mono:
-                li.setProperty("monochrome", "true")
+            li.setArt({"icon": "%s%s" % (folder_path, f)})
             items.append(li)
         panel.addItems(items)
-        self.setFocusId(self.PANEL_ID)
+
+    def _stop_monitor(self):
+        if self.monitor:
+            self.monitor.stop()
+            self.monitor = None
 
     def onClick(self, control_id):
         if control_id == self.PANEL_ID:
             panel = self.getControl(self.PANEL_ID)
             idx = panel.getSelectedPosition()
-            if 0 <= idx < len(self.icons):
-                self.selected = "iconpicker/%s/%s" % (
-                    self.subfolder, self.icons[idx]
+            if 0 <= idx < len(self.current_icons):
+                self.selected = "iconpicker/monochrome/%s/%s" % (
+                    self.folders[self.current_folder_idx],
+                    self.current_icons[idx],
                 )
+            self._stop_monitor()
             self.close()
+        elif control_id == self.FOLDER_LIST_ID:
+            folder_list = self.getControl(self.FOLDER_LIST_ID)
+            idx = folder_list.getSelectedPosition()
+            if 0 <= idx < len(self.folders):
+                self._load_folder(idx)
 
     def onAction(self, action):
         action_id = action.getId()
         if action_id in (self.ACTION_PREVIOUS_MENU, self.ACTION_NAV_BACK):
             self.selected = None
+            self._stop_monitor()
             self.close()
+
+
+class _IconFolderMonitor(threading.Thread):
+    """Polls folder list selection; loads icons after 500ms of no change."""
+
+    DEBOUNCE_MS = 500
+    POLL_MS = 100
+
+    def __init__(self, dialog):
+        super().__init__(daemon=True)
+        self.dialog = dialog
+        self.running = True
+        self._last_seen_idx = -1
+        self._stable_since = 0
+
+    def run(self):
+        monitor = xbmc.Monitor()
+        while self.running and not monitor.abortRequested():
+            try:
+                self._check()
+            except Exception:
+                pass
+            xbmc.sleep(self.POLL_MS)
+
+    def _check(self):
+        d = self.dialog
+        try:
+            folder_list = d.getControl(d.FOLDER_LIST_ID)
+            idx = folder_list.getSelectedPosition()
+        except Exception:
+            return
+        if idx < 0 or idx >= len(d.folders):
+            return
+        now = time.time()
+        if idx != self._last_seen_idx:
+            self._last_seen_idx = idx
+            self._stable_since = now
+            return
+        if (now - self._stable_since) >= (self.DEBOUNCE_MS / 1000.0):
+            if idx != d.current_folder_idx:
+                d._load_folder(idx)
+
+    def stop(self):
+        self.running = False
 
 
 class _ServiceMonitor(threading.Thread):
@@ -401,7 +494,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         )
         for sid in sorted_ids:
             section = self.config[sid]["section"]
-            name = section["name"]
+            name = _resolve_localize(section["name"])
             hidden = section.get("visible") == "false"
             li = xbmcgui.ListItem(_dim_label(name) if hidden else name)
             li.setProperty("section_id", str(sid))
@@ -443,7 +536,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             section_data = self.config.get(self.current_section_id)
             if section_data:
                 new_widgets = section_data["widgets"]
-                is_weather = section_data["section"]["name"] == "Weather"
+                is_weather = section_data["section"]["name"] == "$LOCALIZE[8]"
         if is_weather:
             self.setProperty("weather_section", "true")
         else:
@@ -475,7 +568,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         else:
             friendly_type = _friendly(widget["display_type"])
             line2 = friendly_type
-        label = _dim_label(widget["label"]) if hidden else widget["label"]
+        resolved = _resolve_localize(widget["label"])
+        label = _dim_label(resolved) if hidden else resolved
         line2 = _dim_label(line2) if hidden else line2
         li = xbmcgui.ListItem(label, line2)
         self._set_widget_item_props(li, widget)
@@ -492,12 +586,13 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         else:
             friendly_type = _friendly(widget["display_type"])
             line2 = friendly_type
-        label = _dim_label(widget["label"]) if hidden else widget["label"]
+        resolved = _resolve_localize(widget["label"])
+        label = _dim_label(resolved) if hidden else resolved
         line2 = _dim_label(line2) if hidden else line2
         li.setLabel(label)
         li.setLabel2(line2)
         li.setProperty("widget_id", str(widget["id"]))
-        li.setProperty("widget_label", widget["label"])
+        li.setProperty("widget_label", resolved)
         if is_stacked:
             li.setProperty("display_type", _friendly(stacked_type))
         else:
@@ -593,10 +688,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         if target == "section":
             self.edit_menu_item_id = item_id or self._get_selected_section_id()
             section = self.config[self.edit_menu_item_id]["section"]
-            header_label = section["name"]
+            header_label = _resolve_localize(section["name"])
             header_icon = section.get("icon", "")
             # Weather sections don't support submenus
-            if section.get("name") == "Weather" and "submenu" in menu:
+            if section.get("name") == "$LOCALIZE[8]" and "submenu" in menu:
                 menu.remove("submenu")
         else:
             self.edit_menu_item_id = item_id or self._get_selected_submenu_id()
@@ -647,7 +742,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         new_ids = []
         for sid in sorted_ids:
             section = self.config[sid]["section"]
-            name = section["name"]
+            name = _resolve_localize(section["name"])
             hidden = section.get("visible") == "false"
             label = _dim_label(name) if hidden else name
             props = {
@@ -730,7 +825,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         target = self.edit_menu_target
         if target == "section":
             section = self.config.get(item_id, {}).get("section", {})
-            header_label = section.get("name", "")
+            header_label = _resolve_localize(section.get("name", ""))
             header_icon = section.get("icon", "")
         else:
             submenus = self.config.get(self.submenu_section_id, {}).get("submenus", [])
@@ -792,7 +887,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         # Weather is a special section — hardcoded onclick and widgets in skin XML
         is_weather = default_name == "Weather" and not result.get("path")
         if is_weather:
-            name = "Weather"
+            name = "$LOCALIZE[8]"
         else:
             name = self._input("Section Name", default_name)
             if not name:
@@ -821,7 +916,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.changed = True
         # Insert in-place (no list reset = no flicker)
         insert_idx = current_idx + 1
-        li = xbmcgui.ListItem(name)
+        li = xbmcgui.ListItem(_resolve_localize(name))
         li.setProperty("section_id", str(section_id))
         li.setProperty("icon", icon)
         section_list = self.getControl(SECTION_LIST)
@@ -840,7 +935,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         sid = self._get_selected_section_id()
         if sid is None:
             return
-        name = self.config[sid]["section"]["name"]
+        name = _resolve_localize(self.config[sid]["section"]["name"])
         if not self._confirm("Delete '%s' ?[CR][CR][COLOR red][B]WARNING:[/B][/COLOR] This cannot be undone." % name):
             return
         del_idx = self.section_ids.index(sid) if sid in self.section_ids else 0
@@ -864,7 +959,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             sid = self._get_selected_section_id()
         if sid is None:
             return
-        current_name = self.config[sid]["section"]["name"]
+        current_name = _resolve_localize(self.config[sid]["section"]["name"])
         new_name = self._input("Rename Section", current_name)
         if not new_name or new_name == current_name:
             return
@@ -913,28 +1008,19 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
 
     def _pick_icon(self):
         """Show icon picker dialog. Returns icon path string or None if cancelled."""
-        choices = ["None", "Monochrome", "Color", "Browse..."]
+        choices = ["None", "Built-in icons", "Browse..."]
         idx = self._select("Icon", choices)
         if idx is None or idx < 0:
             return None
         if idx == 0:
             return ""
-        if idx == 3:
-            # Browse for a custom image
+        if idx == 2:
             path = xbmcgui.Dialog().browse(2, "Choose icon", "files", ".png|.jpg|.gif")
             if not path:
                 return None
             return path
-        # Monochrome or Color subfolder
-        subfolder = "monochrome" if idx == 1 else "color"
-        icon_dir = "special://skin/media/iconpicker/%s/" % subfolder
-        _, files = xbmcvfs.listdir(icon_dir)
-        files = sorted([f for f in files if f.lower().endswith(".png")])
-        if not files:
-            return None
         picker = IconPickerDialog(
             "DialogIconPicker.xml", SKIN_PATH, "default", "1080i",
-            icons=files, subfolder=subfolder, icon_dir=icon_dir,
         )
         picker.doModal()
         result = picker.selected
@@ -948,7 +1034,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             sid = self._get_selected_section_id()
         if sid is None:
             return
-        name = self.config[sid]["section"]["name"]
+        name = _resolve_localize(self.config[sid]["section"]["name"])
         self.submenu_mode = True
         self.submenu_section_id = sid
         self.submenu_section_name = name
@@ -1200,7 +1286,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             xbmcgui.Dialog().notification("Widget Manager", "Select a section first")
             return
         section_data = self.config.get(self.current_section_id)
-        if section_data and section_data["section"]["name"] == "Weather":
+        if section_data and section_data["section"]["name"] == "$LOCALIZE[8]":
             return
         result = path_browser.browse(include_weather=False)
         if not result:
@@ -1382,10 +1468,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 return
             new_path = result["path"]
             new_target = result.get("target", widget.get("target", "videos"))
-            default_label = result.get("label", widget.get("label", ""))
+            default_label = result.get("label", _resolve_localize(widget.get("label", "")))
             new_label = self._input("Widget Label", default_label)
             if not new_label:
-                new_label = default_label or widget.get("label", "")
+                new_label = default_label or _resolve_localize(widget.get("label", ""))
             self.cm.update_widget(
                 wid, path=new_path, label=new_label, target=new_target
             )
@@ -1393,7 +1479,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self._update_widget_item_in_place(wid)
             return
         else:
-            current = str(widget.get(field, ""))
+            current = _resolve_localize(str(widget.get(field, "")))
             new_val = self._input(field.replace("_", " ").title(), current)
             if not new_val:
                 return
@@ -1534,7 +1620,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             )
             for i, sid in enumerate(sorted_ids):
                 section = self.config[sid]["section"]
-                name = section["name"]
+                name = _resolve_localize(section["name"])
                 hidden = section.get("visible") == "false"
                 li = section_list.getListItem(i)
                 li.setLabel(_dim_label(name) if hidden else name)
@@ -1601,7 +1687,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         # Update label in-place
         idx = self.section_ids.index(sid) if sid in self.section_ids else -1
         if idx >= 0:
-            name = self.config[sid]["section"]["name"]
+            name = _resolve_localize(self.config[sid]["section"]["name"])
             li = self.getControl(SECTION_LIST).getListItem(idx)
             li.setLabel(_dim_label(name) if new_visible == "false" else name)
             li.setProperty("hidden", "true" if new_visible == "false" else "")

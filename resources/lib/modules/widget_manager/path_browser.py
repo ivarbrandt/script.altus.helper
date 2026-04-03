@@ -5,8 +5,16 @@ Supports video/music/program addons, library nodes, PVR, playlists, sources,
 games, pictures, favourites, and more.
 """
 import json
+import re
 import xbmc
 import xbmcgui
+
+_LOCALIZE_RE = re.compile(r'\$LOCALIZE\[(\d+)\]')
+
+
+def _resolve_localize(text):
+    """Resolve $LOCALIZE[N] tokens to their localized strings."""
+    return _LOCALIZE_RE.sub(lambda m: xbmc.getLocalizedString(int(m.group(1))), text)
 
 dialog = xbmcgui.Dialog()
 ListItem = xbmcgui.ListItem
@@ -14,180 +22,180 @@ ListItem = xbmcgui.ListItem
 # ── Root categories ──
 
 ROOT_CATEGORIES = [
-    ("Addons", "__addons__", "videos"),
-    ("Library", "__library__", "videos"),
+    ("$LOCALIZE[24001]", "__addons__", "videos"),
+    ("$LOCALIZE[15100]", "__library__", "videos"),
     ("PVR", "__pvr__", "videos"),
-    ("Playlists", "__playlists__", "videos"),
-    ("Sources", "__sources__", "videos"),
-    ("Favourites", "favourites://", "videos"),
-    ("Games", "__games__", "games"),
-    ("Weather", "__weather__", "videos"),
+    ("$LOCALIZE[136]", "__playlists__", "videos"),
+    ("$LOCALIZE[20094]", "__sources__", "videos"),
+    ("$LOCALIZE[10134]", "favourites://", "videos"),
+    ("$LOCALIZE[15016]", "__games__", "games"),
+    ("$LOCALIZE[8]", "__weather__", "videos"),
 ]
 
 # ── Addon sub-menus ──
 
 ADDON_NODES = [
-    ("Categories", "addons://", "addonbrowser"),
-    ("Video Addons", "addons://sources/video", "videos"),
-    ("Music Addons", "addons://sources/music", "music"),
-    ("Program Addons", "addons://sources/executable", "programs"),
-    ("Picture Addons", "addons://sources/image", "pictures"),
-    ("Game Addons", "addons://sources/game", "games"),
+    ("$LOCALIZE[31148]", "addons://", "addonbrowser"),
+    ("$LOCALIZE[1037]", "addons://sources/video", "videos"),
+    ("$LOCALIZE[1038]", "addons://sources/music", "music"),
+    ("$LOCALIZE[1043]", "addons://sources/executable", "programs"),
+    ("$LOCALIZE[1039]", "addons://sources/image", "pictures"),
+    ("$LOCALIZE[35049]", "addons://sources/game", "games"),
     ("Installed Addons", "__installed_addons__", "addons"),
 ]
 
 # ── Library sub-menus ──
 
 LIBRARY_NODES = [
-    ("Video Library", "__video_library__", "videos"),
-    ("Music Library", "__music_library__", "music"),
-    ("Pictures", "__pictures__", "pictures"),
+    ("$LOCALIZE[14236]", "__video_library__", "videos"),
+    ("$LOCALIZE[14237]", "__music_library__", "music"),
+    ("$LOCALIZE[1]", "__pictures__", "pictures"),
 ]
 
 VIDEO_LIBRARY_NODES = [
-    ("Movies", "__video_movies__", "videos"),
-    ("TV Shows", "__video_tvshows__", "videos"),
-    ("Music Videos", "__video_musicvideos__", "videos"),
-    ("Categories", "library://video/"),
+    ("$LOCALIZE[342]", "__video_movies__", "videos"),
+    ("$LOCALIZE[20343]", "__video_tvshows__", "videos"),
+    ("$LOCALIZE[20389]", "__video_musicvideos__", "videos"),
+    ("$LOCALIZE[31148]", "library://video/"),
 ]
 
 VIDEO_MOVIES_NODES = [
-    ("Categories", "library://video/movies/"),
-    ("Titles", "videodb://movies/titles/"),
-    ("Genres", "videodb://movies/genres/"),
-    ("Years", "videodb://movies/years/"),
-    ("Actors", "videodb://movies/actors/"),
-    ("Directors", "videodb://movies/directors/"),
-    ("Studios", "videodb://movies/studios/"),
-    ("Countries", "videodb://movies/countries/"),
-    ("Sets", "videodb://movies/sets/"),
-    ("Tags", "videodb://movies/tags/"),
-    ("Recently Added", "videodb://recentlyaddedmovies/"),
-    ("In Progress", "videodb://inprogressmovies/"),
+    ("$LOCALIZE[31148]", "library://video/movies/"),
+    ("$LOCALIZE[10024]", "videodb://movies/titles/"),
+    ("$LOCALIZE[135]", "videodb://movies/genres/"),
+    ("$LOCALIZE[652]", "videodb://movies/years/"),
+    ("$LOCALIZE[344]", "videodb://movies/actors/"),
+    ("$LOCALIZE[20348]", "videodb://movies/directors/"),
+    ("$LOCALIZE[20388]", "videodb://movies/studios/"),
+    ("$LOCALIZE[20451]", "videodb://movies/countries/"),
+    ("$LOCALIZE[31075]", "videodb://movies/sets/"),
+    ("$LOCALIZE[20459]", "videodb://movies/tags/"),
+    ("$LOCALIZE[20386]", "videodb://recentlyaddedmovies/"),
+    ("$LOCALIZE[31010]", "videodb://inprogressmovies/"),
 ]
 
 VIDEO_TVSHOWS_NODES = [
-    ("Categories", "library://video/tvshows/"),
-    ("Titles", "videodb://tvshows/titles/"),
-    ("Genres", "videodb://tvshows/genres/"),
-    ("Years", "videodb://tvshows/years/"),
-    ("Actors", "videodb://tvshows/actors/"),
-    ("Studios", "videodb://tvshows/studios/"),
-    ("Tags", "videodb://tvshows/tags/"),
-    ("Recently Added Episodes", "videodb://recentlyaddedepisodes/"),
-    ("In Progress", "videodb://inprogresstvshows/"),
+    ("$LOCALIZE[31148]", "library://video/tvshows/"),
+    ("$LOCALIZE[10024]", "videodb://tvshows/titles/"),
+    ("$LOCALIZE[135]", "videodb://tvshows/genres/"),
+    ("$LOCALIZE[652]", "videodb://tvshows/years/"),
+    ("$LOCALIZE[344]", "videodb://tvshows/actors/"),
+    ("$LOCALIZE[20388]", "videodb://tvshows/studios/"),
+    ("$LOCALIZE[20459]", "videodb://tvshows/tags/"),
+    ("$LOCALIZE[20387]", "videodb://recentlyaddedepisodes/"),
+    ("$LOCALIZE[626]", "videodb://inprogresstvshows/"),
 ]
 
 VIDEO_MUSICVIDEOS_NODES = [
-    ("Categories", "library://video/musicvideos/"),
-    ("Titles", "videodb://musicvideos/titles/"),
-    ("Genres", "videodb://musicvideos/genres/"),
-    ("Years", "videodb://musicvideos/years/"),
-    ("Artists", "videodb://musicvideos/artists/"),
-    ("Albums", "videodb://musicvideos/albums/"),
-    ("Studios", "videodb://musicvideos/studios/"),
-    ("Tags", "videodb://musicvideos/tags/"),
-    ("Recently Added", "videodb://recentlyaddedmusicvideos/"),
+    ("$LOCALIZE[31148]", "library://video/musicvideos/"),
+    ("$LOCALIZE[10024]", "videodb://musicvideos/titles/"),
+    ("$LOCALIZE[135]", "videodb://musicvideos/genres/"),
+    ("$LOCALIZE[652]", "videodb://musicvideos/years/"),
+    ("$LOCALIZE[133]", "videodb://musicvideos/artists/"),
+    ("$LOCALIZE[132]", "videodb://musicvideos/albums/"),
+    ("$LOCALIZE[20388]", "videodb://musicvideos/studios/"),
+    ("$LOCALIZE[20459]", "videodb://musicvideos/tags/"),
+    ("$LOCALIZE[20390]", "videodb://recentlyaddedmusicvideos/"),
 ]
 
 MUSIC_LIBRARY_NODES = [
-    ("Artists", "musicdb://artists/"),
-    ("Albums", "musicdb://albums/"),
-    ("Songs", "musicdb://songs/"),
-    ("Genres", "musicdb://genres/"),
-    ("Years", "musicdb://years/"),
-    ("Recently Added", "musicdb://recentlyaddedalbums/"),
-    ("Recently Played", "musicdb://recentlyplayedalbums/"),
+    ("$LOCALIZE[133]", "musicdb://artists/"),
+    ("$LOCALIZE[132]", "musicdb://albums/"),
+    ("$LOCALIZE[134]", "musicdb://songs/"),
+    ("$LOCALIZE[135]", "musicdb://genres/"),
+    ("$LOCALIZE[652]", "musicdb://years/"),
+    ("$LOCALIZE[359]", "musicdb://recentlyaddedalbums/"),
+    ("$LOCALIZE[517]", "musicdb://recentlyplayedalbums/"),
     ("Recently Played Songs", "musicdb://recentlyplayedsongs/"),
-    ("Top 100 Songs", "musicdb://top100/songs/"),
-    ("Top 100 Albums", "musicdb://top100/albums/"),
-    ("Compilations", "musicdb://compilations/"),
-    ("Categories", "library://music/"),
+    ("$LOCALIZE[10504]", "musicdb://top100/songs/"),
+    ("$LOCALIZE[10505]", "musicdb://top100/albums/"),
+    ("$LOCALIZE[521]", "musicdb://compilations/"),
+    ("$LOCALIZE[31148]", "library://music/"),
 ]
 
 # ── PVR sub-menus ──
 
 PVR_NODES = [
-    ("Live TV", "__pvr_tv__", "videos"),
-    ("Radio", "__pvr_radio__", "music"),
+    ("$LOCALIZE[19020]", "__pvr_tv__", "videos"),
+    ("$LOCALIZE[19021]", "__pvr_radio__", "music"),
 ]
 
 PVR_TV_NODES = [
-    ("Categories", "pvr://tv/", "videos"),
-    ("Recent Channels", "pvr://channels/tv/*?view=lastplayed", "tvchannels"),
-    ("TV Channels", "pvr://channels/tv/", "tvchannels"),
-    ("Recordings", "pvr://recordings/tv/active?view=flat", "tvrecordings"),
-    ("Timers", "pvr://timers/tv/timers/?view=hidedisabled", "tvtimers"),
-    ("Channel Groups", "pvr://channels/tv", "tvguide"),
-    ("Saved Searches", "pvr://search/tv/savedsearches", "tvsearch"),
-    ("New Channels", "pvr://channels/tv/*?view=dateadded", "tvchannels"),
+    ("$LOCALIZE[31148]", "pvr://tv/", "videos"),
+    ("$LOCALIZE[31016]", "pvr://channels/tv/*?view=lastplayed", "tvchannels"),
+    ("$LOCALIZE[10700]", "pvr://channels/tv/", "tvchannels"),
+    ("$LOCALIZE[31015]", "pvr://recordings/tv/active?view=flat", "tvrecordings"),
+    ("$LOCALIZE[19040]", "pvr://timers/tv/timers/?view=hidedisabled", "tvtimers"),
+    ("$LOCALIZE[19173]", "pvr://channels/tv", "tvguide"),
+    ("$LOCALIZE[19337]", "pvr://search/tv/savedsearches", "tvsearch"),
+    ("$LOCALIZE[855]", "pvr://channels/tv/*?view=dateadded", "tvchannels"),
 ]
 
 PVR_RADIO_NODES = [
-    ("Categories", "pvr://radio/", "music"),
-    ("Recent Channels", "pvr://channels/radio/*?view=lastplayed", "radiochannels"),
-    ("Radio Channels", "pvr://channels/radio/", "radiochannels"),
-    ("Recordings", "pvr://recordings/radio/active?view=flat", "radiorecordings"),
-    ("Timers", "pvr://timers/radio/timers/?view=hidedisabled", "radiotimers"),
-    ("Channel Groups", "pvr://channels/radio", "radioguide"),
-    ("Saved Searches", "pvr://search/radio/savedsearches", "radiosearch"),
-    ("New Channels", "pvr://channels/radio/*?view=dateadded", "radiochannels"),
+    ("$LOCALIZE[31148]", "pvr://radio/", "music"),
+    ("$LOCALIZE[31018]", "pvr://channels/radio/*?view=lastplayed", "radiochannels"),
+    ("$LOCALIZE[10705]", "pvr://channels/radio/", "radiochannels"),
+    ("$LOCALIZE[31015]", "pvr://recordings/radio/active?view=flat", "radiorecordings"),
+    ("$LOCALIZE[19040]", "pvr://timers/radio/timers/?view=hidedisabled", "radiotimers"),
+    ("$LOCALIZE[19174]", "pvr://channels/radio", "radioguide"),
+    ("$LOCALIZE[19337]", "pvr://search/radio/savedsearches", "radiosearch"),
+    ("$LOCALIZE[855]", "pvr://channels/radio/*?view=dateadded", "radiochannels"),
 ]
 
 # ── Pictures sub-menu ──
 
 PICTURES_NODES = [
-    ("Sources", "sources://pictures/"),
+    ("$LOCALIZE[20094]", "sources://pictures/"),
 ]
 
 # ── Playlists sub-menu ──
 
 PLAYLIST_NODES = [
-    ("Video Playlists", "special://profile/playlists/video/", "videos"),
-    ("Music Playlists", "special://profile/playlists/music/", "music"),
-    ("Skin Playlists", "__skin_playlists__", "videos"),
+    ("$LOCALIZE[20012]", "special://profile/playlists/video/", "videos"),
+    ("$LOCALIZE[20011]", "special://profile/playlists/music/", "music"),
+    ("$LOCALIZE[166] $LOCALIZE[136]", "__skin_playlists__", "videos"),
 ]
 
 # ── Sources sub-menu ──
 
 SOURCES_NODES = [
-    ("Video Sources", "sources://video/", "videos"),
-    ("Music Sources", "sources://music/", "music"),
+    ("$LOCALIZE[157] $LOCALIZE[39031]", "sources://video/", "videos"),
+    ("$LOCALIZE[2] $LOCALIZE[39031]", "sources://music/", "music"),
     ("Picture Sources", "sources://pictures/", "pictures"),
 ]
 
 # ── Games sub-menu ──
 
 GAMES_NODES = [
-    ("Game Addons", "addons://sources/game/"),
+    ("$LOCALIZE[35049]", "addons://sources/game/"),
 ]
 
 # ── Skin playlists ──
 
 SKIN_PLAYLIST_NODES = [
-    ("Random Albums", "special://skin/playlists/random_albums.xsp"),
-    ("Random Artists", "special://skin/playlists/random_artists.xsp"),
-    ("Unplayed Albums", "special://skin/playlists/unplayed_albums.xsp"),
-    ("Most Played", "special://skin/playlists/mostplayed_albums.xsp"),
-    ("Unwatched", "special://skin/playlists/unwatched_musicvideos.xsp"),
+    ("$LOCALIZE[31012]", "special://skin/playlists/random_albums.xsp"),
+    ("$LOCALIZE[31013]", "special://skin/playlists/random_artists.xsp"),
+    ("$LOCALIZE[31014]", "special://skin/playlists/unplayed_albums.xsp"),
+    ("$LOCALIZE[31011]", "special://skin/playlists/mostplayed_albums.xsp"),
+    ("$LOCALIZE[31151]", "special://skin/playlists/unwatched_musicvideos.xsp"),
     (
-        "Random Music Video Artists",
+        "$LOCALIZE[31013]",
         "special://skin/playlists/random_musicvideo_artists.xsp",
     ),
-    ("Random Music Videos", "special://skin/playlists/random_musicvideos.xsp"),
+    ("$LOCALIZE[31152]", "special://skin/playlists/random_musicvideos.xsp"),
 ]
 
 # ── Installed addons (direct widget paths from Home.xml group 8001) ──
 
 INSTALLED_ADDONS_NODES = [
     ("All Addons", "addons://", "addons"),
-    ("Video Addons", "addons://sources/video/", "videos"),
-    ("Music Addons", "addons://sources/audio/", "music"),
-    ("Game Addons", "addons://sources/game/", "games"),
-    ("Program Addons", "addons://sources/executable/", "programs"),
-    ("Android Apps", "androidapp://sources/apps/", "programs"),
-    ("Picture Addons", "addons://sources/image/", "pictures"),
-    ("Recently Updated", "addons://recently_updated/", "addons"),
+    ("$LOCALIZE[1037]", "addons://sources/video/", "videos"),
+    ("$LOCALIZE[1038]", "addons://sources/audio/", "music"),
+    ("$LOCALIZE[35049]", "addons://sources/game/", "games"),
+    ("$LOCALIZE[1043]", "addons://sources/executable/", "programs"),
+    ("$LOCALIZE[20244]", "androidapp://sources/apps/", "programs"),
+    ("$LOCALIZE[1039]", "addons://sources/image/", "pictures"),
+    ("$LOCALIZE[24004]", "addons://recently_updated/", "addons"),
     ("Outdated Addons", "addons://outdated/", "addons"),
 ]
 
@@ -266,10 +274,11 @@ def browse(include_weather=True):
         if include_weather
         else [c for c in ROOT_CATEGORIES if c[1] != "__weather__"]
     )
-    idx = dialog.select("Choose content source", [c[0] for c in categories])
+    idx = dialog.select("Choose content source", [_resolve_localize(c[0]) for c in categories])
     if idx < 0:
         return None
     label, path, target = categories[idx]
+    label = _resolve_localize(label)
     # Weather is a special section — no browsable path, hardcoded widgets in skin XML
     if path == "__weather__":
         return {"label": "Weather", "path": "", "target": "", "display_type": ""}
@@ -403,11 +412,11 @@ def _browse_submenu(nodes, target, direct=False):
         direct: If True, selected items are returned as final widget paths
             without further browsing (e.g. Installed Addons items).
     """
-    idx = dialog.select("Choose category", [n[0] for n in nodes])
+    idx = dialog.select("Choose category", [_resolve_localize(n[0]) for n in nodes])
     if idx < 0:
         return None
     node = nodes[idx]
-    label, path = node[0], node[1]
+    label, path = _resolve_localize(node[0]), node[1]
     # 3-tuple nodes have their own target override
     node_target = node[2] if len(node) > 2 else target
     # Check if this node leads to another submenu (multi-level nesting)
