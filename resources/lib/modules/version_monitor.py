@@ -24,8 +24,10 @@ def check_for_update(skin_id):
         return set_installed_version(skin_id, installed_version)
     if property_version == installed_version:
         return
+    from modules.widget_manager.migration import migrate
     from modules.widget_manager.xml_generator import generate_and_reload
 
+    migrate()
     set_installed_version(skin_id, installed_version)
     sleep(1000)
     generate_and_reload()

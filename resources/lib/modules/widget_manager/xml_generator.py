@@ -154,7 +154,7 @@ def _build_menu_item_xml(section, group_id, submenu_list_id=None):
         icon_prop = ""
         if section.get("icon"):
             icon_prop = '\n      <property name="icon">{icon}</property>'.format(
-                icon=section["icon"]
+                icon=_escape_ampersand(section["icon"])
             )
         submenu_prop = ""
         if submenu_list_id:
