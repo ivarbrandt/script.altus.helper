@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-import re
 import xbmc, xbmcaddon, xbmcvfs, xbmcgui
+import re
 import threading
 import time
 

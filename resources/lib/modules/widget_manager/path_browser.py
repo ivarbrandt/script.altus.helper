@@ -6,8 +6,7 @@ games, pictures, favourites, and more.
 """
 import json
 import re
-import xbmc
-import xbmcgui
+import xbmc, xbmcgui
 
 _LOCALIZE_RE = re.compile(r'\$LOCALIZE\[(\d+)\]')
 

@@ -5,9 +5,7 @@ Runs once automatically on first launch after update.
 Also supports importing configs from other skins (Nimbus, FENtastic).
 """
 import sqlite3 as database
-import xbmc
-import xbmcgui
-import xbmcvfs
+import xbmc, xbmcvfs, xbmcgui
 
 from modules.widget_manager.config_manager import ConfigManager
 

@@ -7,9 +7,7 @@ Reads config from ConfigManager and generates:
   - script-altus-home_groups.xml  (per-section group/grouplist structure)
   - script-altus-submenus.xml     (per-section submenu lists for home screen)
 """
-import xbmc
-import xbmcgui
-import xbmcvfs
+import xbmc, xbmcvfs, xbmcgui
 from threading import Thread
 
 from modules.widget_manager.config_manager import ConfigManager
