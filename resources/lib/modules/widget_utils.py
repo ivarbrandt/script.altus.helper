@@ -93,3 +93,66 @@ def widget_monitor(list_id):
                 pass
         else:
             monitor.waitForAbort(0.1)
+
+
+def season_monitor(container_id):
+    monitor = xbmc.Monitor()
+    window_id = xbmcgui.getCurrentWindowId()
+    if window_id != 10025:
+        return
+    window = xbmcgui.Window(window_id)
+    path_prop = "altus.season.path"
+    path_info = "Container(%s).ListItem.FolderPath" % container_id
+    delay = 0.5
+    current_path = window.getProperty(path_prop)
+    initial = current_path == ""
+    while not monitor.abortRequested():
+        monitor.waitForAbort(0.1)
+        if xbmcgui.getCurrentWindowId() != window_id:
+            break
+        if str(window.getFocusId()) != container_id:
+            break
+        cpath = xbmc.getInfoLabel(path_info)
+        if not cpath or cpath == window.getProperty(path_prop):
+            continue
+        if xbmc.getCondVisibility("System.HasActiveModalDialog"):
+            continue
+        if initial:
+            window.setProperty(path_prop, cpath)
+            _cache_unwatched_index(window, container_id)
+            initial = False
+            continue
+        switch = True
+        countdown = delay
+        while not monitor.abortRequested() and countdown >= 0 and switch:
+            monitor.waitForAbort(0.1)
+            countdown -= 0.1
+            if str(window.getFocusId()) != container_id:
+                switch = False
+            elif xbmc.getInfoLabel(path_info) != cpath:
+                switch = False
+            elif xbmc.getCondVisibility("System.HasActiveModalDialog"):
+                switch = False
+            elif xbmcgui.getCurrentWindowId() != window_id:
+                switch = False
+        if switch:
+            window.setProperty(path_prop, cpath)
+            _cache_unwatched_index(window, container_id)
+
+
+def _cache_unwatched_index(window, container_id):
+    prop = "altus.season.unwatched_index"
+    if not xbmc.getCondVisibility("Skin.HasSetting(Enable.57FocusUnwatched)"):
+        window.setProperty(prop, "0")
+        return
+    watched = xbmc.getInfoLabel(
+        "Container(%s).ListItem.Property(WatchedEpisodes)" % container_id
+    )
+    unwatched = xbmc.getInfoLabel(
+        "Container(%s).ListItem.Property(UnwatchedEpisodes)" % container_id
+    )
+    is_partial = watched and watched != "0" and unwatched and unwatched != "0"
+    if not is_partial:
+        window.setProperty(prop, "0")
+        return
+    window.setProperty(prop, watched)

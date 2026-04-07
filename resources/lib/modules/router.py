@@ -35,6 +35,11 @@ def routing():
 
         return widget_monitor(_get("list_id"))
 
+    if mode == "season_monitor":
+        from modules.widget_utils import season_monitor
+
+        return season_monitor(_get("container_id"))
+
     if "actions" in mode:
         from modules import actions
 
