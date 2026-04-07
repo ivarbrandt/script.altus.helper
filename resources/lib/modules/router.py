@@ -40,6 +40,11 @@ def routing():
 
         return season_monitor(_get("container_id"))
 
+    if mode == "icon_folder_debounce":
+        from modules.widget_manager.manager_window import icon_folder_debounce
+
+        return icon_folder_debounce()
+
     if "actions" in mode:
         from modules import actions
 

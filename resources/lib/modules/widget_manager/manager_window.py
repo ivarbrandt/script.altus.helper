@@ -2,7 +2,6 @@
 import xbmc, xbmcaddon, xbmcvfs, xbmcgui
 import re
 import threading
-import time
 
 from modules.widget_manager.config_manager import ConfigManager
 from modules.widget_manager.xml_generator import generate_and_reload
@@ -242,6 +241,32 @@ def _dim_label(text):
 
 
 
+def icon_folder_debounce():
+    monitor = xbmc.Monitor()
+    delay = 0.5
+    last_pos = xbmc.getInfoLabel("Container(3001).Position")
+    while not monitor.abortRequested():
+        monitor.waitForAbort(0.1)
+        if not xbmc.getCondVisibility("Control.HasFocus(3001)"):
+            break
+        current_pos = xbmc.getInfoLabel("Container(3001).Position")
+        if current_pos == last_pos:
+            continue
+        target_pos = current_pos
+        switch = True
+        countdown = delay
+        while not monitor.abortRequested() and countdown >= 0 and switch:
+            monitor.waitForAbort(0.1)
+            countdown -= 0.1
+            if not xbmc.getCondVisibility("Control.HasFocus(3001)"):
+                switch = False
+            elif xbmc.getInfoLabel("Container(3001).Position") != target_pos:
+                switch = False
+        if switch:
+            last_pos = target_pos
+            xbmc.executebuiltin("Action(Select)")
+
+
 class IconPickerDialog(xbmcgui.WindowXMLDialog):
     """Grid dialog for picking an icon with folder browsing."""
 
@@ -257,7 +282,6 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
         self.folders = []
         self.current_icons = []
         self.current_folder_idx = -1
-        self.monitor = None
         super().__init__(*args, **kwargs)
 
     def onInit(self):
@@ -275,8 +299,6 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
         folder_list.addItems(items)
         self._load_folder(0)
         self.setFocusId(self.FOLDER_LIST_ID)
-        self.monitor = _IconFolderMonitor(self)
-        self.monitor.start()
 
     def _load_folder(self, idx):
         if idx == self.current_folder_idx:
@@ -301,11 +323,6 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
             items.append(li)
         panel.addItems(items)
 
-    def _stop_monitor(self):
-        if self.monitor:
-            self.monitor.stop()
-            self.monitor = None
-
     def onClick(self, control_id):
         if control_id == self.PANEL_ID:
             panel = self.getControl(self.PANEL_ID)
@@ -315,7 +332,6 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
                     self.folders[self.current_folder_idx],
                     self.current_icons[idx],
                 )
-            self._stop_monitor()
             self.close()
         elif control_id == self.FOLDER_LIST_ID:
             folder_list = self.getControl(self.FOLDER_LIST_ID)
@@ -326,53 +342,11 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
     def onAction(self, action):
         action_id = action.getId()
         if action_id in (self.ACTION_PREVIOUS_MENU, self.ACTION_NAV_BACK):
+            if self.getFocusId() == self.PANEL_ID:
+                self.setFocusId(self.FOLDER_LIST_ID)
+                return
             self.selected = None
-            self._stop_monitor()
             self.close()
-
-
-class _IconFolderMonitor(threading.Thread):
-    """Polls folder list selection; loads icons after 500ms of no change."""
-
-    DEBOUNCE_MS = 500
-    POLL_MS = 100
-
-    def __init__(self, dialog):
-        super().__init__(daemon=True)
-        self.dialog = dialog
-        self.running = True
-        self._last_seen_idx = -1
-        self._stable_since = 0
-
-    def run(self):
-        monitor = xbmc.Monitor()
-        while self.running and not monitor.abortRequested():
-            try:
-                self._check()
-            except Exception:
-                pass
-            xbmc.sleep(self.POLL_MS)
-
-    def _check(self):
-        d = self.dialog
-        try:
-            folder_list = d.getControl(d.FOLDER_LIST_ID)
-            idx = folder_list.getSelectedPosition()
-        except Exception:
-            return
-        if idx < 0 or idx >= len(d.folders):
-            return
-        now = time.time()
-        if idx != self._last_seen_idx:
-            self._last_seen_idx = idx
-            self._stable_since = now
-            return
-        if (now - self._stable_since) >= (self.DEBOUNCE_MS / 1000.0):
-            if idx != d.current_folder_idx:
-                d._load_folder(idx)
-
-    def stop(self):
-        self.running = False
 
 
 class _ServiceMonitor(threading.Thread):
