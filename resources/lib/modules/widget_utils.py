@@ -83,6 +83,10 @@ def widget_monitor(list_id):
         if switch_widget:
             window.setProperty(label_prop, xbmc.getInfoLabel("ListItem.Label"))
             window.setProperty(path_prop, cpath_path)
+            start_wait = 0
+            while not xbmc.getCondVisibility(is_updating_cond) and start_wait < 1:
+                monitor.waitForAbort(0.05)
+                start_wait += 0.05
             update_wait_time = 0
             while xbmc.getCondVisibility(is_updating_cond) and update_wait_time < 3:
                 monitor.waitForAbort(0.05)

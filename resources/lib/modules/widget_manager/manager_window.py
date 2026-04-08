@@ -1840,10 +1840,15 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 if self.widget_btn_idx > 0:
                     self._set_btn("widget", self.widget_btn_idx - 1)
                     return
+                elif self.widget_btn_idx < 0:
+                    # Arrived from detail panel → highlight add button
+                    self._set_btn("widget", WIDGET_BUTTONS.index("add"))
+                    return
                 else:
-                    # At first button → move to section list
+                    # At first button → move to section list, highlight add button
                     self._clear_btn("widget")
                     self.setFocusId(SECTION_LIST)
+                    self._set_btn("section", SECTION_BUTTONS.index("add"))
                     return
 
     def _on_close(self):
