@@ -148,7 +148,7 @@ def _build_menu_item_xml(section, group_id, submenu_list_id=None):
       <onclick condition="String.IsEmpty(Weather.Plugin)">ReplaceWindow(servicesettings,weather)</onclick>
       <property name="menu_id">$NUMBER[15000]</property>
       <property name="id">weather</property>
-      <property name="icon">icons/sidemenu/weather.png</property>
+      <property name="icon">$VAR[WeatherFanartCodeIcon]</property>
     </item>"""
     else:
         icon_prop = ""

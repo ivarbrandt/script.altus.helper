@@ -474,6 +474,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             li.setProperty("section_id", str(sid))
             li.setProperty("hidden", "true" if hidden else "")
             li.setProperty("icon", section.get("icon", ""))
+            if section.get("name") == "$LOCALIZE[8]":
+                li.setProperty("is_weather", "true")
             section_list.addItem(li)
             self.section_ids.append(sid)
         if self.section_ids:
@@ -596,6 +598,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
 
     # ── Inline Button Management ──
 
+    def _is_weather_section_selected(self):
+        return self.getProperty("weather_section") == "true"
+
     def _set_btn(self, target, idx):
         """Set the active button via window property."""
         if target == "section":
@@ -636,7 +641,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             li = section_list.getListItem(i)
             li.setLabel(label)
             # Clear old properties then set new ones
-            for key in ("section_id", "submenu_id", "edit_option", "icon", "hidden"):
+            for key in ("section_id", "submenu_id", "edit_option", "icon", "hidden", "is_weather"):
                 li.setProperty(key, "")
             for key, val in props.items():
                 li.setProperty(key, val)
@@ -659,14 +664,14 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.setProperty("edit_menu_open", "true")
         self._clear_btn("section")
         # Remember which item we're editing
+        header_is_weather = ""
         if target == "section":
             self.edit_menu_item_id = item_id or self._get_selected_section_id()
             section = self.config[self.edit_menu_item_id]["section"]
             header_label = _resolve_localize(section["name"])
             header_icon = section.get("icon", "")
-            # Weather sections don't support submenus
-            if section.get("name") == "$LOCALIZE[8]" and "submenu" in menu:
-                menu.remove("submenu")
+            if section.get("name") == "$LOCALIZE[8]":
+                header_is_weather = "true"
         else:
             self.edit_menu_item_id = item_id or self._get_selected_submenu_id()
             submenus = self.config[self.submenu_section_id]["submenus"]
@@ -674,7 +679,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             header_label = sub.get("label", "")
             header_icon = sub.get("icon", "")
         # Build items: header + indented options
-        items = [("[B]%s[/B]" % header_label, {"edit_option": "", "icon": header_icon})]
+        items = [("[B]%s[/B]" % header_label, {"edit_option": "", "icon": header_icon, "is_weather": header_is_weather})]
         for key in menu:
             items.append(("    %s" % EDIT_MENU_LABELS[key], {"edit_option": key, "icon": ""}))
         section_list = self.getControl(SECTION_LIST)
@@ -797,10 +802,13 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self._load_config()
         item_id = self.edit_menu_item_id
         target = self.edit_menu_target
+        header_is_weather = ""
         if target == "section":
             section = self.config.get(item_id, {}).get("section", {})
             header_label = _resolve_localize(section.get("name", ""))
             header_icon = section.get("icon", "")
+            if section.get("name") == "$LOCALIZE[8]":
+                header_is_weather = "true"
         else:
             submenus = self.config.get(self.submenu_section_id, {}).get("submenus", [])
             sub = next((s for s in submenus if s["id"] == item_id), {})
@@ -809,6 +817,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         header = self.getControl(SECTION_LIST).getListItem(0)
         header.setLabel("[B]%s[/B]" % header_label)
         header.setProperty("icon", header_icon)
+        header.setProperty("is_weather", header_is_weather)
 
     def _activate_btn(self, target):
         """Execute the currently highlighted button's action."""
@@ -820,6 +829,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             if idx < 0:
                 return
             btn = SECTION_BUTTONS[idx]
+            if btn == "edit" and self._is_weather_section_selected():
+                return
             item_id = self._get_selected_section_id()
             self._clear_btn("section")
             if btn == "add":
@@ -883,7 +894,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         pos_after = None
         if current and current in self.config:
             pos_after = self.config[current]["section"]["position"]
-        icon = result.get("thumbnail", "")
+        icon = "$VAR[WeatherFanartCodeIcon]" if is_weather else result.get("thumbnail", "")
         section_id = self.cm.add_section(name=name, onclick=onclick, icon=icon)
         if pos_after is not None:
             self.cm.reorder_section(section_id, pos_after + 1)
@@ -893,6 +904,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         li = xbmcgui.ListItem(_resolve_localize(name))
         li.setProperty("section_id", str(section_id))
         li.setProperty("icon", icon)
+        if is_weather:
+            li.setProperty("is_weather", "true")
         section_list = self.getControl(SECTION_LIST)
         section_list.addItem(li)
         # Move from end to correct position by swapping
@@ -1601,6 +1614,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 li.setProperty("section_id", str(sid))
                 li.setProperty("hidden", "true" if hidden else "")
                 li.setProperty("icon", section.get("icon", ""))
+                li.setProperty("is_weather", "true" if section.get("name") == "$LOCALIZE[8]" else "")
             self.section_ids = sorted_ids
             section_list.selectItem(new_idx)
         elif self.reorder_target == "widget":
@@ -1802,9 +1816,14 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
 
         # Section list: inline button navigation
         if focus_id == SECTION_LIST and not self.reorder_mode:
+            skip_edit = self._is_weather_section_selected() and not self.submenu_mode
+            edit_idx = SECTION_BUTTONS.index("edit")
             if action_id == ACTION_MOVE_RIGHT:
-                if self.section_btn_idx < len(SECTION_BUTTONS) - 1:
-                    self._set_btn("section", self.section_btn_idx + 1)
+                next_idx = self.section_btn_idx + 1
+                if skip_edit and next_idx == edit_idx:
+                    next_idx += 1
+                if next_idx < len(SECTION_BUTTONS):
+                    self._set_btn("section", next_idx)
                     return
                 elif self.submenu_mode:
                     # In submenu mode, stay on last button
@@ -1818,8 +1837,11 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                         self.setFocusId(ADD_WIDGET_BTN)
                     return
             elif action_id == ACTION_MOVE_LEFT:
-                if self.section_btn_idx > 0:
-                    self._set_btn("section", self.section_btn_idx - 1)
+                prev_idx = self.section_btn_idx - 1
+                if skip_edit and prev_idx == edit_idx:
+                    prev_idx -= 1
+                if prev_idx >= 0:
+                    self._set_btn("section", prev_idx)
                     return
                 else:
                     # At first button, leftmost panel → do nothing

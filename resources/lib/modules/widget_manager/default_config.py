@@ -498,7 +498,7 @@ DEFAULT_SECTIONS = [
     {
         "name": "$LOCALIZE[8]",
         "onclick": "ActivateWindow(Weather)",
-        "icon": "icons/sidemenu/weather.png",
+        "icon": "$VAR[WeatherFanartCodeIcon]",
         "widgets": [],
     },
 ]
