@@ -45,15 +45,10 @@ def routing():
 
         return icon_folder_debounce()
 
-    if mode == "pvr_channel_debounce":
-        from modules.pvr_epg import channel_focus_debounce
+    if mode == "open_channel_guide":
+        from modules.pvr import open_channel_guide
 
-        return channel_focus_debounce(_get("container_id"))
-
-    if mode == "pvr_action":
-        from modules.pvr_actions import dispatch
-
-        return dispatch(params)
+        return open_channel_guide()
 
     if "actions" in mode:
         from modules import actions

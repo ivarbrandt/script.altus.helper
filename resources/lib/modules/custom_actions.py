@@ -2,9 +2,8 @@ import xbmc, xbmcaddon, xbmcgui, xbmcvfs
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from threading import Timer
-import sys, re, requests
+import sys, re
 import json
-
 
 def show_changelog():
     helper_addon = xbmcaddon.Addon("script.altus.helper")
@@ -101,6 +100,7 @@ def set_blursaturation():
 
 
 def check_api_key(api_key):
+    import requests
     api_url = "https://mdblist.com/api/"
     params = {
         "apikey": api_key,

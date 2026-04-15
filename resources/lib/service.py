@@ -1,7 +1,6 @@
 import xbmc, xbmcgui, xbmcvfs
 import json
 import os
-import time
 from threading import Thread
 from modules.logger import logger
 from modules.monitors.ratings import RatingsMonitor
@@ -32,7 +31,6 @@ class Service(xbmc.Monitor):
         self._last_content_type = None
         self._view_prefs_cache = {}
         self._view_prefs_mtime = 0
-        self._last_reminder_check = 0
 
     def run(self):
         """Start the service and monitor."""
@@ -45,41 +43,12 @@ class Service(xbmc.Monitor):
                 self._check_stacked_widgets(on_home)
             else:
                 self._was_on_home = False
-            self._check_pvr_reminders()
             if self._should_pause():
                 self.waitForAbort(2)
                 continue
             self.ratings_monitor.process_current_item()
             self.monitor_addon_views()
             self.waitForAbort(0.2)
-
-    def _check_pvr_reminders(self):
-        now = time.time()
-        if now - self._last_reminder_check < 30:
-            return
-        self._last_reminder_check = now
-        from modules import pvr_reminders
-        due = pvr_reminders.pop_due(now)
-        for r in due:
-            title = r.get("title") or "Programme"
-            channelid = r.get("channelid")
-            if channelid:
-                choice = xbmcgui.Dialog().yesno(
-                    "Altus reminder",
-                    "[B]%s[/B] is starting now.\n\nSwitch to the channel?" % title,
-                    nolabel="Dismiss",
-                    yeslabel="Switch",
-                )
-                if choice:
-                    xbmc.executeJSONRPC(json.dumps({
-                        "jsonrpc": "2.0", "id": 1, "method": "Player.Open",
-                        "params": {"item": {"channelid": int(channelid)}},
-                    }))
-            else:
-                xbmcgui.Dialog().notification(
-                    "Altus reminder", "%s is starting now" % title,
-                    xbmcgui.NOTIFICATION_INFO, 5000,
-                )
 
     def _check_version_and_profile(self):
         """Check for skin updates and profile changes (runs in service loop)."""
