@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-import xbmc
-import xbmcgui
+import xbmc, xbmcgui
 
 
 def open_channel_guide():
