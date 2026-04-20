@@ -37,7 +37,10 @@ class Service(xbmc.Monitor):
         self.image_monitor.start()
         self._was_on_home = False
         while not self.abortRequested():
-            on_home = self.get_visibility("Window.IsVisible(home)") and xbmc.getSkinDir() == "skin.altus"
+            on_home = (
+                self.get_visibility("Window.IsVisible(home)")
+                and xbmc.getSkinDir() == "skin.altus"
+            )
             if on_home:
                 self._check_version_and_profile()
                 self._check_stacked_widgets(on_home)
