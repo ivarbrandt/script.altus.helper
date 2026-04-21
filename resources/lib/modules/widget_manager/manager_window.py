@@ -728,6 +728,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 "section_id": str(sid),
                 "hidden": "true" if hidden else "",
                 "icon": section.get("icon", ""),
+                "is_weather": "true" if section.get("name") == "$LOCALIZE[8]" else "",
             }
             items.append((label, props))
             new_ids.append(sid)
