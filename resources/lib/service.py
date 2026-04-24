@@ -126,16 +126,29 @@ class Service(xbmc.Monitor):
         addon_key = plugin_name if plugin_name else "__library__"
         prefs = self._load_view_preferences()
 
-        # When addon changes, preload all skin strings for the new addon
-        if addon_key != self._last_addon_key:
+        addon_changed = addon_key != self._last_addon_key
+        content_changed = content_type != self._last_content_type
+
+        if addon_changed:
             self._last_addon_key = addon_key
             self._apply_all_addon_views(addon_key, prefs)
 
-        # When content type changes, apply SetViewMode for the current view
-        if content_type != self._last_content_type:
+        # Apply SetViewMode whenever addon or content changes — re-entering a
+        # plugin from home keeps content_type="" on both sides, so we must also
+        # react to addon changes or the view never gets switched back.
+        if addon_changed or content_changed:
             self._last_content_type = content_type
             saved_view = prefs.get(addon_key, {}).get(content_type)
             if saved_view and isinstance(saved_view, dict):
+                # Skin.SetString is async; wait for Skin.ForcedView.{ct} to
+                # reflect the expected label before SetViewMode, or the view's
+                # <visible> may still evaluate false and the switch gets dropped.
+                expected = saved_view["label"]
+                key = f"Skin.String(Skin.ForcedView.{content_type})"
+                for _ in range(15):
+                    if xbmc.getInfoLabel(key) == expected:
+                        break
+                    xbmc.sleep(20)
                 xbmc.executebuiltin(f'Container.SetViewMode({saved_view["viewid"]})')
 
     def _should_pause(self):
