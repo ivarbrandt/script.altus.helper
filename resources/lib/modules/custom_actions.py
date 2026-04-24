@@ -62,7 +62,7 @@ def set_image():
         False,
         last_path,
     )
-    if image_file:
+    if image_file and image_file != last_path:
         xbmc.executebuiltin(f"Skin.SetString(LastImagePath,{image_file})")
         xbmc.executebuiltin(f"Skin.SetString(AltusCustomBackground,{image_file})")
 
