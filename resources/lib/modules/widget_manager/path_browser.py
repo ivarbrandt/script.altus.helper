@@ -8,12 +8,13 @@ import json
 import re
 import xbmc, xbmcgui
 
-_LOCALIZE_RE = re.compile(r'\$LOCALIZE\[(\d+)\]')
+_LOCALIZE_RE = re.compile(r"\$LOCALIZE\[(\d+)\]")
 
 
 def _resolve_localize(text):
     """Resolve $LOCALIZE[N] tokens to their localized strings."""
     return _LOCALIZE_RE.sub(lambda m: xbmc.getLocalizedString(int(m.group(1))), text)
+
 
 dialog = xbmcgui.Dialog()
 ListItem = xbmcgui.ListItem
@@ -258,7 +259,7 @@ _ONCLICK_OVERRIDES = {
 }
 
 
-def browse(include_weather=True):
+def browse(include_weather=True, allow_multi=True):
     """
     Main entry point. Shows root category picker, then recursive path browser.
     Returns dict {"label", "path", "target", "display_type"} or None if cancelled.
@@ -273,7 +274,9 @@ def browse(include_weather=True):
         if include_weather
         else [c for c in ROOT_CATEGORIES if c[1] != "__weather__"]
     )
-    idx = dialog.select("Choose content source", [_resolve_localize(c[0]) for c in categories])
+    idx = dialog.select(
+        "Choose content source", [_resolve_localize(c[0]) for c in categories]
+    )
     if idx < 0:
         return None
     label, path, target = categories[idx]
@@ -283,11 +286,16 @@ def browse(include_weather=True):
         return {"label": "Weather", "path": "", "target": "", "display_type": ""}
     nodes = _SUBMENU_MAP.get(path)
     if nodes is not None:
-        result = _browse_submenu(nodes, target)
+        result = _browse_submenu(nodes, target, allow_multi=allow_multi)
     else:
-        result = _browse_path(path=path, label=label)
-        if result:
+        result = _browse_path(path=path, label=label, allow_multi=allow_multi)
+        if result and "multi" not in result:
             result["target"] = target
+    if result and "multi" in result:
+        for item in result["multi"]:
+            item["target"] = target
+            item["display_type"] = _auto_display_type(item["path"], target)
+        return result
     if result:
         result["display_type"] = _auto_display_type(result["path"], result["target"])
     return result
@@ -404,7 +412,7 @@ def _auto_display_type(path, target):
     return None
 
 
-def _browse_submenu(nodes, target, direct=False):
+def _browse_submenu(nodes, target, direct=False, allow_multi=True):
     """Show a sub-menu of predefined nodes, then browse or return the selected one.
 
     Args:
@@ -421,7 +429,12 @@ def _browse_submenu(nodes, target, direct=False):
     # Check if this node leads to another submenu (multi-level nesting)
     sub_nodes = _SUBMENU_MAP.get(path)
     if sub_nodes is not None:
-        return _browse_submenu(sub_nodes, node_target, direct=path in _DIRECT_SUBMENUS)
+        return _browse_submenu(
+            sub_nodes,
+            node_target,
+            direct=path in _DIRECT_SUBMENUS,
+            allow_multi=allow_multi,
+        )
     # Paths that should be browsed into via _browse_path
     browsable = not direct and (
         path.startswith("videodb://")
@@ -437,13 +450,13 @@ def _browse_submenu(nodes, target, direct=False):
     )
     if not browsable:
         return {"label": label, "path": path, "thumbnail": "", "target": node_target}
-    result = _browse_path(path=path, label=label)
+    result = _browse_path(path=path, label=label, allow_multi=allow_multi)
     if result:
         result["target"] = node_target
     return result
 
 
-def _browse_path(path, label="", thumbnail=""):
+def _browse_path(path, label="", thumbnail="", allow_multi=True):
     """
     Browse a path via JSON-RPC Files.GetDirectory with a navigation stack.
     Returns dict {"label", "path", "thumbnail"} or None.
@@ -474,6 +487,28 @@ def _browse_path(path, label="", thumbnail=""):
                 json.dumps(
                     {"label": cur_label, "path": cur_path, "thumbnail": cur_thumb}
                 ),
+            )
+            items.append(li)
+        # "Select multiple folders" option (only useful when dirs exist)
+        multi_marker = "__multi_select__"
+        has_dirs = any(
+            r.get("filetype") == "directory" and not _is_next_page(r.get("label", ""))
+            for r in results
+        )
+        if has_dirs and allow_multi:
+            li = ListItem(
+                "[B]Multi-select[/B]",
+                "Add multiple widgets at once",
+                offscreen=True,
+            )
+            li.setArt(
+                {
+                    "icon": "special://skin/media/iconpicker/monochrome/Document/folders-line.png"
+                }
+            )
+            li.setProperty(
+                "item",
+                json.dumps({"path": multi_marker}),
             )
             items.append(li)
         # Separate directories, file items, and next-page entries
@@ -561,6 +596,12 @@ def _browse_path(path, label="", thumbnail=""):
                 return None
             continue
         selected = json.loads(items[choice].getProperty("item"))
+        if selected["path"] == multi_marker:
+            picked = _multiselect_folders(results)
+            if not picked:
+                # Cancel or empty — stay in this directory
+                continue
+            return {"multi": picked}
         if selected["path"] == cur_path:
             # User chose "Use as path"
             selected["label"] = _clean(selected["label"])
@@ -573,6 +614,41 @@ def _browse_path(path, label="", thumbnail=""):
         cur_path = selected["path"]
         cur_label = selected["label"]
         cur_thumb = selected.get("thumbnail", "")
+
+
+def _multiselect_folders(results):
+    """Show a multi-select dialog over the directories in `results`.
+
+    Returns a list of dicts {label, path, thumbnail, filetype} for picked
+    folders, or [] if the user cancelled or selected nothing.
+    """
+    folders = [
+        r
+        for r in results
+        if r.get("filetype") == "directory" and not _is_next_page(r.get("label", ""))
+    ]
+    if not folders:
+        return []
+    options = []
+    for r in folders:
+        li = ListItem(_clean(r["label"]), "Folder", offscreen=True)
+        if r.get("thumbnail"):
+            li.setArt({"icon": r["thumbnail"]})
+        options.append(li)
+    picked_idx = dialog.multiselect(
+        "Select folders to add as widgets", options, useDetails=True
+    )
+    if not picked_idx:
+        return []
+    return [
+        {
+            "label": _clean(folders[i]["label"]),
+            "path": folders[i]["file"],
+            "thumbnail": folders[i].get("thumbnail", ""),
+            "filetype": "directory",
+        }
+        for i in picked_idx
+    ]
 
 
 def _get_directory(path):

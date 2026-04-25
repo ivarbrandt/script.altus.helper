@@ -866,7 +866,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
     # ── Section Actions ──
 
     def _add_section(self):
-        result = path_browser.browse()
+        result = path_browser.browse(allow_multi=False)
         if not result:
             return
         default_name = result.get("label", "")
@@ -964,7 +964,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             sid = self._get_selected_section_id()
         if sid is None:
             return
-        result = path_browser.browse()
+        result = path_browser.browse(allow_multi=False)
         if not result:
             return
         onclick = path_browser.build_onclick(
@@ -1090,7 +1090,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         return None
 
     def _add_submenu(self):
-        result = path_browser.browse()
+        result = path_browser.browse(allow_multi=False)
         if not result:
             return
         default_label = result.get("label", "")
@@ -1187,7 +1187,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             sub_id = self._get_selected_submenu_id()
         if sub_id is None:
             return
-        result = path_browser.browse()
+        result = path_browser.browse(allow_multi=False)
         if not result:
             return
         onclick = path_browser.build_onclick(
@@ -1279,6 +1279,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         result = path_browser.browse(include_weather=False)
         if not result:
             return
+        # Multi-select branch — list of folders, no label prompt, batched type prompt
+        if "multi" in result:
+            self._add_widgets_multi(result["multi"])
+            return
         path = result["path"]
         target = result.get("target", "videos")
         default_label = result.get("label", "")
@@ -1337,6 +1341,79 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self._swap_widget_items(widget_list, i, i - 1)
         self.widget_ids.insert(insert_idx, widget_id)
         widget_list.selectItem(insert_idx)
+        self._load_config()
+        self.setFocusId(WIDGET_LIST)
+
+    def _add_widgets_multi(self, picks):
+        """Add multiple widgets from a multi-select result.
+
+        Auto-resolves display_type per item; prompts once for any unresolved
+        and applies the chosen type to all of them.
+        """
+        if not picks:
+            return
+        # Batched display_type prompt for unresolved items
+        unresolved = [p for p in picks if not p.get("display_type")]
+        if unresolved:
+            sample = unresolved[0]
+            types = _get_display_types_for_widget(
+                {"path": sample["path"], "target": sample.get("target", "videos")}
+            )
+            names = [t[0] for t in types]
+            idx = self._select("Display Type (applies to all)", names)
+            if idx is None or idx < 0:
+                return
+            chosen_type = types[idx][1]
+            for p in unresolved:
+                p["display_type"] = chosen_type
+        # Insert position — after currently selected widget
+        current_wid = self._get_selected_widget_id()
+        current_idx = (
+            self.widget_ids.index(current_wid)
+            if current_wid and current_wid in self.widget_ids
+            else len(self.widget_ids) - 1
+        )
+        pos_after = None
+        if current_wid:
+            w = self.cm.get_widget(current_wid)
+            if w:
+                pos_after = w["position"]
+        widget_list = self.getControl(WIDGET_LIST)
+        insert_idx = current_idx + 1
+        for offset, pick in enumerate(picks):
+            path = pick["path"]
+            target = pick.get("target", "videos")
+            label = pick["label"]
+            internal_type = pick["display_type"]
+            widget_id = self.cm.add_widget(
+                section_id=self.current_section_id,
+                path=path,
+                label=label,
+                display_type=internal_type,
+                target=target,
+                stacked_type=internal_type,
+            )
+            if pos_after is not None:
+                self.cm.reorder_widget(widget_id, pos_after + 1 + offset)
+            friendly_type = _friendly(internal_type)
+            li = xbmcgui.ListItem(label, friendly_type)
+            li.setProperty("widget_id", str(widget_id))
+            li.setProperty("widget_label", label)
+            li.setProperty("display_type", friendly_type)
+            li.setProperty("widget_path", path)
+            li.setProperty("target", target)
+            li.setProperty("is_stacked", "No")
+            li.setProperty("stacked_type", "")
+            li.setProperty("limit_num", "0")
+            li.setProperty("sortby", "")
+            li.setProperty("sortorder", "")
+            this_idx = insert_idx + offset
+            widget_list.addItem(li)
+            for i in range(len(self.widget_ids), this_idx, -1):
+                self._swap_widget_items(widget_list, i, i - 1)
+            self.widget_ids.insert(this_idx, widget_id)
+        self.changed = True
+        widget_list.selectItem(insert_idx + len(picks) - 1)
         self._load_config()
         self.setFocusId(WIDGET_LIST)
 
@@ -1451,7 +1528,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 return
             new_val = SORT_ORDER_TYPES[idx]
         elif field == "path":
-            result = path_browser.browse(include_weather=False)
+            result = path_browser.browse(include_weather=False, allow_multi=False)
             if not result:
                 return
             new_path = result["path"]
