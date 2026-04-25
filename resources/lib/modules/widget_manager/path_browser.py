@@ -41,7 +41,7 @@ ADDON_NODES = [
     ("$LOCALIZE[1043]", "addons://sources/executable", "programs"),
     ("$LOCALIZE[1039]", "addons://sources/image", "pictures"),
     ("$LOCALIZE[35049]", "addons://sources/game", "games"),
-    ("Installed Addons", "__installed_addons__", "addons"),
+    ("$LOCALIZE[20244]", "androidapp://sources/apps/", "programs"),
 ]
 
 # ── Library sub-menus ──
@@ -185,24 +185,7 @@ SKIN_PLAYLIST_NODES = [
     ("$LOCALIZE[31152]", "special://skin/playlists/random_musicvideos.xsp"),
 ]
 
-# ── Installed addons (direct widget paths from Home.xml group 8001) ──
-
-INSTALLED_ADDONS_NODES = [
-    ("All Addons", "addons://", "addons"),
-    ("$LOCALIZE[1037]", "addons://sources/video/", "videos"),
-    ("$LOCALIZE[1038]", "addons://sources/audio/", "music"),
-    ("$LOCALIZE[35049]", "addons://sources/game/", "games"),
-    ("$LOCALIZE[1043]", "addons://sources/executable/", "programs"),
-    ("$LOCALIZE[20244]", "androidapp://sources/apps/", "programs"),
-    ("$LOCALIZE[1039]", "addons://sources/image/", "pictures"),
-    ("$LOCALIZE[24004]", "addons://recently_updated/", "addons"),
-    ("Outdated Addons", "addons://outdated/", "addons"),
-]
-
 # ── Submenu routing ──
-
-# Submenus whose items are final widget paths (not browsable further)
-_DIRECT_SUBMENUS = {"__installed_addons__"}
 
 _SUBMENU_MAP = {
     "__addons__": ADDON_NODES,
@@ -220,7 +203,6 @@ _SUBMENU_MAP = {
     "__pictures__": PICTURES_NODES,
     "__games__": GAMES_NODES,
     "__skin_playlists__": SKIN_PLAYLIST_NODES,
-    "__installed_addons__": INSTALLED_ADDONS_NODES,
 }
 
 # ── Window map for onclick construction ──
@@ -413,13 +395,8 @@ def _auto_display_type(path, target):
     return None
 
 
-def _browse_submenu(nodes, target, direct=False, allow_multi=True):
-    """Show a sub-menu of predefined nodes, then browse or return the selected one.
-
-    Args:
-        direct: If True, selected items are returned as final widget paths
-            without further browsing (e.g. Installed Addons items).
-    """
+def _browse_submenu(nodes, target, allow_multi=True):
+    """Show a sub-menu of predefined nodes, then browse or return the selected one."""
     # Leaves are entries that resolve to real widget paths (i.e. NOT nav nodes
     # that lead to another submenu). Multi-select offers picking multiple of
     # these in one go.
@@ -454,11 +431,10 @@ def _browse_submenu(nodes, target, direct=False, allow_multi=True):
         return _browse_submenu(
             sub_nodes,
             node_target,
-            direct=path in _DIRECT_SUBMENUS,
             allow_multi=allow_multi,
         )
     # Paths that should be browsed into via _browse_path
-    browsable = not direct and (
+    browsable = (
         path.startswith("videodb://")
         or path.startswith("musicdb://")
         or path.startswith("library://")
