@@ -1090,8 +1090,11 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         return None
 
     def _add_submenu(self):
-        result = path_browser.browse(allow_multi=False)
+        result = path_browser.browse()
         if not result:
+            return
+        if "multi" in result:
+            self._add_submenus_multi(result["multi"])
             return
         default_label = result.get("label", "")
         label = self._input("Submenu Label", default_label)
@@ -1137,6 +1140,53 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         # Select the new item
         new_idx = self.submenu_ids.index(new_id) if new_id in self.submenu_ids else 0
         section_list.selectItem(new_idx)
+        self.setFocusId(SECTION_LIST)
+        self._set_btn("section", 0)
+
+    def _add_submenus_multi(self, picks):
+        """Add multiple submenus from a multi-select result.
+
+        No label or display-type prompts — each pick's auto-resolved label is
+        used directly. Submenus have no display_type to configure.
+        """
+        if not picks:
+            return
+        current_id = self._get_selected_submenu_id()
+        current_idx = (
+            self.submenu_ids.index(current_id)
+            if current_id and current_id in self.submenu_ids
+            else len(self.submenu_ids) - 1
+        )
+        pos_after = None
+        if self.submenu_ids and 0 <= current_idx < len(self.submenu_ids):
+            submenus = self.config[self.submenu_section_id]["submenus"]
+            for s in submenus:
+                if s["id"] == self.submenu_ids[current_idx]:
+                    pos_after = s["position"]
+                    break
+        new_ids = []
+        for offset, pick in enumerate(picks):
+            label = pick["label"]
+            path = pick.get("path", "")
+            target = pick.get("target", "videos")
+            onclick = path_browser.build_onclick(path, target) if path else ""
+            icon = pick.get("thumbnail", "")
+            new_id = self.cm.add_submenu(
+                self.submenu_section_id, label, onclick=onclick, icon=icon
+            )
+            if pos_after is not None:
+                self.cm.reorder_submenu(new_id, pos_after + 1 + offset)
+            new_ids.append(new_id)
+        self.changed = True
+        self._load_config()
+        self._repopulate_submenus()
+        if new_ids:
+            last_idx = (
+                self.submenu_ids.index(new_ids[-1])
+                if new_ids[-1] in self.submenu_ids
+                else 0
+            )
+            self.getControl(SECTION_LIST).selectItem(last_idx)
         self.setFocusId(SECTION_LIST)
         self._set_btn("section", 0)
 
