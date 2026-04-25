@@ -241,7 +241,7 @@ _ONCLICK_OVERRIDES = {
 }
 
 
-def browse(include_weather=True, allow_multi=True):
+def browse(include_weather=True, allow_multi=True, multi_heading=None):
     """
     Main entry point. Shows root category picker, then recursive path browser.
     Returns dict {"label", "path", "target", "display_type"} or None if cancelled.
@@ -268,9 +268,16 @@ def browse(include_weather=True, allow_multi=True):
         return {"label": "Weather", "path": "", "target": "", "display_type": ""}
     nodes = _SUBMENU_MAP.get(path)
     if nodes is not None:
-        result = _browse_submenu(nodes, target, allow_multi=allow_multi)
+        result = _browse_submenu(
+            nodes, target, allow_multi=allow_multi, multi_heading=multi_heading
+        )
     else:
-        result = _browse_path(path=path, label=label, allow_multi=allow_multi)
+        result = _browse_path(
+            path=path,
+            label=label,
+            allow_multi=allow_multi,
+            multi_heading=multi_heading,
+        )
         if result and "multi" not in result:
             result["target"] = target
     if result and "multi" in result:
@@ -395,7 +402,7 @@ def _auto_display_type(path, target):
     return None
 
 
-def _browse_submenu(nodes, target, allow_multi=True):
+def _browse_submenu(nodes, target, allow_multi=True, multi_heading=None):
     """Show a sub-menu of predefined nodes, then browse or return the selected one."""
     # Leaves are entries that resolve to real widget paths (i.e. NOT nav nodes
     # that lead to another submenu). Multi-select offers picking multiple of
@@ -414,7 +421,7 @@ def _browse_submenu(nodes, target, allow_multi=True):
             if _get_home_prop(_PROP_DO_MULTI) == "true":
                 _clear_home_prop(_PROP_DO_MULTI)
                 _clear_home_prop(_PROP_ALLOW_MULTI)
-                picked = _multiselect_leaves(leaves, target)
+                picked = _multiselect_leaves(leaves, target, heading=multi_heading)
                 if not picked:
                     return None
                 return {"multi": picked}
@@ -432,6 +439,7 @@ def _browse_submenu(nodes, target, allow_multi=True):
             sub_nodes,
             node_target,
             allow_multi=allow_multi,
+            multi_heading=multi_heading,
         )
     # Paths that should be browsed into via _browse_path
     browsable = (
@@ -448,7 +456,12 @@ def _browse_submenu(nodes, target, allow_multi=True):
     )
     if not browsable:
         return {"label": label, "path": path, "thumbnail": "", "target": node_target}
-    result = _browse_path(path=path, label=label, allow_multi=allow_multi)
+    result = _browse_path(
+        path=path,
+        label=label,
+        allow_multi=allow_multi,
+        multi_heading=multi_heading,
+    )
     if result:
         result["target"] = node_target
     return result
@@ -471,7 +484,7 @@ def _clear_home_prop(name):
     xbmcgui.Window(_HOME_WIN).clearProperty(name)
 
 
-def _browse_path(path, label="", thumbnail="", allow_multi=True):
+def _browse_path(path, label="", thumbnail="", allow_multi=True, multi_heading=None):
     """
     Browse a path via JSON-RPC Files.GetDirectory with a navigation stack.
     Returns dict {"label", "path", "thumbnail"} or None.
@@ -488,13 +501,15 @@ def _browse_path(path, label="", thumbnail="", allow_multi=True):
     _clear_home_prop(_PROP_DO_MULTI)
     _clear_home_prop(_PROP_ALLOW_MULTI)
     try:
-        return _browse_path_loop(stack, cur_path, cur_label, cur_thumb, allow_multi)
+        return _browse_path_loop(
+            stack, cur_path, cur_label, cur_thumb, allow_multi, multi_heading
+        )
     finally:
         _clear_home_prop(_PROP_DO_MULTI)
         _clear_home_prop(_PROP_ALLOW_MULTI)
 
 
-def _browse_path_loop(stack, cur_path, cur_label, cur_thumb, allow_multi):
+def _browse_path_loop(stack, cur_path, cur_label, cur_thumb, allow_multi, multi_heading):
     while True:
         _show_busy()
         results = _get_directory(cur_path) or []
@@ -612,7 +627,7 @@ def _browse_path_loop(stack, cur_path, cur_label, cur_thumb, allow_multi):
             if _get_home_prop(_PROP_DO_MULTI) == "true":
                 _clear_home_prop(_PROP_DO_MULTI)
                 _clear_home_prop(_PROP_ALLOW_MULTI)
-                picked = _multiselect_folders(results)
+                picked = _multiselect_folders(results, heading=multi_heading)
                 if not picked:
                     # Cancel or empty — stay in this directory
                     continue
@@ -637,7 +652,7 @@ def _browse_path_loop(stack, cur_path, cur_label, cur_thumb, allow_multi):
         cur_thumb = selected.get("thumbnail", "")
 
 
-def _multiselect_folders(results):
+def _multiselect_folders(results, heading=None):
     """Show a multi-select dialog over the directories in `results`.
 
     Returns a list of dicts {label, path, thumbnail, filetype} for picked
@@ -657,7 +672,7 @@ def _multiselect_folders(results):
             li.setArt({"icon": r["thumbnail"]})
         options.append(li)
     picked_idx = dialog.multiselect(
-        "Select folders to add as widgets", options, useDetails=True
+        heading or "Add multiple widgets", options, useDetails=True
     )
     if not picked_idx:
         return []
@@ -672,7 +687,7 @@ def _multiselect_folders(results):
     ]
 
 
-def _multiselect_leaves(leaves, parent_target):
+def _multiselect_leaves(leaves, parent_target, heading=None):
     """Show a multi-select dialog over submenu leaf entries.
 
     Each leaf is a tuple (label, path[, target]). Returns a list of widget
@@ -686,7 +701,9 @@ def _multiselect_leaves(leaves, parent_target):
         label = _resolve_localize(n[0])
         li = ListItem(label, "Submenu option", offscreen=True)
         options.append(li)
-    picked_idx = dialog.multiselect("Multi-select", options, useDetails=True)
+    picked_idx = dialog.multiselect(
+        heading or "Add multiple widgets", options, useDetails=True
+    )
     if not picked_idx:
         return []
     out = []

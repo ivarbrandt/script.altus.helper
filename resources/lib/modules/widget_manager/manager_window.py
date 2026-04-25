@@ -1090,7 +1090,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         return None
 
     def _add_submenu(self):
-        result = path_browser.browse()
+        result = path_browser.browse(
+            multi_heading="Add multiple submenu items"
+        )
         if not result:
             return
         if "multi" in result:
