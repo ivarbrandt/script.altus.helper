@@ -456,14 +456,47 @@ def _browse_submenu(nodes, target, direct=False, allow_multi=True):
     return result
 
 
+_HOME_WIN = 10000  # Window(Home) for skin properties
+_PROP_ALLOW_MULTI = "altus.pathbrowser.allow_multi"
+_PROP_DO_MULTI = "altus.pathbrowser.do_multi"
+
+
+def _set_home_prop(name, value):
+    xbmcgui.Window(_HOME_WIN).setProperty(name, value)
+
+
+def _get_home_prop(name):
+    return xbmcgui.Window(_HOME_WIN).getProperty(name)
+
+
+def _clear_home_prop(name):
+    xbmcgui.Window(_HOME_WIN).clearProperty(name)
+
+
 def _browse_path(path, label="", thumbnail="", allow_multi=True):
     """
     Browse a path via JSON-RPC Files.GetDirectory with a navigation stack.
     Returns dict {"label", "path", "thumbnail"} or None.
+
+    When allow_multi is True, exposes a Multi-select button in the skinned
+    DialogSelect via the altus.pathbrowser.allow_multi window property; the
+    button sets altus.pathbrowser.do_multi and closes the dialog, which we
+    detect and convert to a multi-select pick.
     """
     # Stack of (path, label, thumbnail) for back navigation
     stack = []
     cur_path, cur_label, cur_thumb = path, label, thumbnail
+    # Ensure trigger is clean on entry
+    _clear_home_prop(_PROP_DO_MULTI)
+    _clear_home_prop(_PROP_ALLOW_MULTI)
+    try:
+        return _browse_path_loop(stack, cur_path, cur_label, cur_thumb, allow_multi)
+    finally:
+        _clear_home_prop(_PROP_DO_MULTI)
+        _clear_home_prop(_PROP_ALLOW_MULTI)
+
+
+def _browse_path_loop(stack, cur_path, cur_label, cur_thumb, allow_multi):
     while True:
         _show_busy()
         results = _get_directory(cur_path) or []
@@ -489,28 +522,15 @@ def _browse_path(path, label="", thumbnail="", allow_multi=True):
                 ),
             )
             items.append(li)
-        # "Select multiple folders" option (only useful when dirs exist)
-        multi_marker = "__multi_select__"
+        # Toggle Multi-select button visibility based on whether subfolders exist
         has_dirs = any(
             r.get("filetype") == "directory" and not _is_next_page(r.get("label", ""))
             for r in results
         )
-        if has_dirs and allow_multi:
-            li = ListItem(
-                "[B]Multi-select[/B]",
-                "Add multiple widgets at once",
-                offscreen=True,
-            )
-            li.setArt(
-                {
-                    "icon": "special://skin/media/iconpicker/monochrome/Document/folders-line.png"
-                }
-            )
-            li.setProperty(
-                "item",
-                json.dumps({"path": multi_marker}),
-            )
-            items.append(li)
+        if allow_multi and has_dirs:
+            _set_home_prop(_PROP_ALLOW_MULTI, "true")
+        else:
+            _clear_home_prop(_PROP_ALLOW_MULTI)
         # Separate directories, file items, and next-page entries
         dirs = []
         next_pages = []
@@ -590,18 +610,21 @@ def _browse_path(path, label="", thumbnail="", allow_multi=True):
             }
         choice = dialog.select("Choose path", items, useDetails=True)
         if choice < 0:
+            # Multi-select button fires SetProperty + Action(Close), which lands here
+            if _get_home_prop(_PROP_DO_MULTI) == "true":
+                _clear_home_prop(_PROP_DO_MULTI)
+                _clear_home_prop(_PROP_ALLOW_MULTI)
+                picked = _multiselect_folders(results)
+                if not picked:
+                    # Cancel or empty — stay in this directory
+                    continue
+                return {"multi": picked}
             if stack:
                 cur_path, cur_label, cur_thumb = stack.pop()
             else:
                 return None
             continue
         selected = json.loads(items[choice].getProperty("item"))
-        if selected["path"] == multi_marker:
-            picked = _multiselect_folders(results)
-            if not picked:
-                # Cancel or empty — stay in this directory
-                continue
-            return {"multi": picked}
         if selected["path"] == cur_path:
             # User chose "Use as path"
             selected["label"] = _clean(selected["label"])
