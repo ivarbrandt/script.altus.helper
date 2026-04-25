@@ -293,8 +293,9 @@ def browse(include_weather=True, allow_multi=True):
             result["target"] = target
     if result and "multi" in result:
         for item in result["multi"]:
-            item["target"] = target
-            item["display_type"] = _auto_display_type(item["path"], target)
+            if not item.get("target"):
+                item["target"] = target
+            item["display_type"] = _auto_display_type(item["path"], item["target"])
         return result
     if result:
         result["display_type"] = _auto_display_type(result["path"], result["target"])
@@ -419,9 +420,30 @@ def _browse_submenu(nodes, target, direct=False, allow_multi=True):
         direct: If True, selected items are returned as final widget paths
             without further browsing (e.g. Installed Addons items).
     """
-    idx = dialog.select("Choose category", [_resolve_localize(n[0]) for n in nodes])
-    if idx < 0:
-        return None
+    # Leaves are entries that resolve to real widget paths (i.e. NOT nav nodes
+    # that lead to another submenu). Multi-select offers picking multiple of
+    # these in one go.
+    leaves = [n for n in nodes if n[1] not in _SUBMENU_MAP]
+    show_multi_btn = allow_multi and len(leaves) >= 2
+    if show_multi_btn:
+        _set_home_prop(_PROP_ALLOW_MULTI, "true")
+    else:
+        _clear_home_prop(_PROP_ALLOW_MULTI)
+    try:
+        idx = dialog.select(
+            "Choose category", [_resolve_localize(n[0]) for n in nodes]
+        )
+        if idx < 0:
+            if _get_home_prop(_PROP_DO_MULTI) == "true":
+                _clear_home_prop(_PROP_DO_MULTI)
+                _clear_home_prop(_PROP_ALLOW_MULTI)
+                picked = _multiselect_leaves(leaves, target)
+                if not picked:
+                    return None
+                return {"multi": picked}
+            return None
+    finally:
+        _clear_home_prop(_PROP_ALLOW_MULTI)
     node = nodes[idx]
     label, path = _resolve_localize(node[0]), node[1]
     # 3-tuple nodes have their own target override
@@ -672,6 +694,38 @@ def _multiselect_folders(results):
         }
         for i in picked_idx
     ]
+
+
+def _multiselect_leaves(leaves, parent_target):
+    """Show a multi-select dialog over submenu leaf entries.
+
+    Each leaf is a tuple (label, path[, target]). Returns a list of widget
+    result dicts {label, path, thumbnail, target}, or [] on cancel/empty.
+    Per-leaf target overrides (3-tuple nodes) are preserved.
+    """
+    if not leaves:
+        return []
+    options = []
+    for n in leaves:
+        label = _resolve_localize(n[0])
+        li = ListItem(label, "Submenu option", offscreen=True)
+        options.append(li)
+    picked_idx = dialog.multiselect("Multi-select", options, useDetails=True)
+    if not picked_idx:
+        return []
+    out = []
+    for i in picked_idx:
+        n = leaves[i]
+        node_target = n[2] if len(n) > 2 else parent_target
+        out.append(
+            {
+                "label": _resolve_localize(n[0]),
+                "path": n[1],
+                "thumbnail": "",
+                "target": node_target,
+            }
+        )
+    return out
 
 
 def _get_directory(path):
