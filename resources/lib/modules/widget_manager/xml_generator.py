@@ -23,6 +23,15 @@ SUBMENUS_XML_FILE = "special://skin/xml/script-altus-submenus.xml"
 # Supports up to 60 sections (3000-8999) and 89 widgets per section.
 BASE_ID = 3000
 
+# Hardcoded icon overrides for specific widget paths. Keyed by widget path,
+# value is emitted as the `icon` param on the include.
+HARDCODED_WIDGET_ICONS = {
+    "special://videoplaylists/": "$VAR[WidgetPlaylistIconVar]",
+    "videodb://movies/genres/": "$VAR[WidgetGenreIconVar]",
+    "videodb://tvshows/studios/": "$VAR[WidgetStudioIconVar]",
+    "videodb://musicvideos/studios/": "$VAR[WidgetStudioIconVar]",
+}
+
 
 def _escape_ampersand(text):
     """Ensure & is escaped as &amp; for XML, but don't double-escape."""
@@ -83,6 +92,9 @@ def _build_widget_xml(widget, list_id):
         xml += '\n      <param name="sortby" value="%s"/>' % widget["sortby"]
     if widget.get("sortorder"):
         xml += '\n      <param name="sortorder" value="%s"/>' % widget["sortorder"]
+    icon = HARDCODED_WIDGET_ICONS.get(widget["path"])
+    if icon:
+        xml += '\n      <param name="icon" value="%s"/>' % icon
     xml += "\n    </include>"
     return xml
 
