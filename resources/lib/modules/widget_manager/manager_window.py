@@ -689,11 +689,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
 
     def _close_edit_menu(self):
         """Close the edit menu and restore the section/submenu list."""
+        # Keep edit_menu_open True until SECTION_LIST is rebuilt, so the
+        # SelectionMonitor doesn't read stale-list/section_ids mismatches.
         item_id = self.edit_menu_item_id
-        self.edit_menu_open = False
-        self.edit_menu_target = None
-        self.edit_menu_item_id = None
-        self.clearProperty("edit_menu_open")
         self._load_config()
         if self.submenu_mode:
             self._repopulate_submenus()
@@ -710,6 +708,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.setFocusId(SECTION_LIST)
         edit_idx = SECTION_BUTTONS.index("edit")
         self._set_btn("section", edit_idx)
+        self.edit_menu_open = False
+        self.edit_menu_target = None
+        self.edit_menu_item_id = None
+        self.clearProperty("edit_menu_open")
 
     def _repopulate_sections(self):
         """Rebuild section list in-place (no reset)."""
@@ -1040,17 +1042,11 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self.setFocusId(ADD_SECTION_BTN)
 
     def _exit_submenu_mode(self):
-        # Remember which section we were editing
+        # Keep submenu_mode True until SECTION_LIST has been rebuilt back to
+        # sections (or re-gated by edit_menu_open), so the SelectionMonitor
+        # doesn't index submenu positions into section_ids mid-transition.
         restore_sid = self.submenu_section_id
         return_sid = self.edit_menu_return_sid
-        self.submenu_mode = False
-        self.submenu_section_id = None
-        self.submenu_section_name = ""
-        self.submenu_ids = []
-        self.edit_menu_return_sid = None
-        self.clearProperty("submenu_mode")
-        self.clearProperty("submenu_header")
-        self.setProperty("add_section_label", "Add Section...")
         self._load_config()
         # If we entered submenu from the edit menu, go straight back to it
         if return_sid:
@@ -1065,6 +1061,14 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 self._update_widgets_inline()
             self.setFocusId(SECTION_LIST)
             self._set_btn("section", 0)
+        self.submenu_mode = False
+        self.submenu_section_id = None
+        self.submenu_section_name = ""
+        self.submenu_ids = []
+        self.edit_menu_return_sid = None
+        self.clearProperty("submenu_mode")
+        self.clearProperty("submenu_header")
+        self.setProperty("add_section_label", "Add Section...")
 
     def _populate_submenus(self):
         """Full populate with reset — only for initial load."""
