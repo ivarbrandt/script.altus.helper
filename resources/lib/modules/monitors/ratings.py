@@ -9,22 +9,25 @@ from ..config import *
 from ..databases import RatingsDatabase
 from ..apis import MDbListClient, TMDbClient
 
+CACHED_IDS_INDEX_PROP = "altus.cachedRatings.index"
+
+
 @dataclass
 class ReleaseWindowConfig:
     """Configuration for digital release windows."""
     recent_days: str = "7"
     expired_days: str = "21"
-    
+
     @classmethod
     def from_skin_settings(cls):
         """Create config from current skin settings."""
         recent_days = xbmc.getInfoLabel("Skin.String(altus_digital_release_window)") or "7"
         expired_days = xbmc.getInfoLabel("Skin.String(altus_digital_expired_window)") or "21"
         return cls(recent_days=recent_days, expired_days=expired_days)
-    
+
     def has_smart_status_settings_changes(self, other_config):
         """Check if recent_days or expired_days have changed."""
-        return (self.recent_days != other_config.recent_days or 
+        return (self.recent_days != other_config.recent_days or
                 self.expired_days != other_config.expired_days)
 
 
@@ -35,6 +38,7 @@ class RatingsMonitor:
         self.home_window = home_window
         self.get_infolabel = xbmc.getInfoLabel
         self.tmdb_client = TMDbClient(TMDB_API_KEY)
+        self.mdblist_client = MDbListClient("", self.database)
         self.last_set_id = None
         self.pending_id = None
         self.last_trailer_id = None
@@ -65,29 +69,25 @@ class RatingsMonitor:
             self.pending_id = None
             self.last_trailer_id = None
             xbmcgui.Dialog().notification(
-                "Smart status settings change detected", 
+                "Smart status settings change detected",
                 "Ratings cache cleared",
                 "special://skin/resources/icon.jpg",
                 3000
             )
-            
+
 
     def _process_ratings(self, media_id: str, meta: Dict[str, Any]) -> None:
         """Process ratings for the current item."""
         with self._rating_lock:
-            cache_invalidated_time = self.home_window.getProperty("altus.ratings_cache_invalidated")
-            if not cache_invalidated_time:
-                cached_ratings = self.home_window.getProperty(
-                    f"altus.cachedRatings.{media_id}"
-                )
-                if cached_ratings:
-                    self._set_ratings_from_cache(media_id, cached_ratings)
-                    return
+            cached_ratings = self.home_window.getProperty(
+                f"altus.cachedRatings.{media_id}"
+            )
+            if cached_ratings:
+                self._set_ratings_from_cache(media_id, cached_ratings)
+                return
             cached_data = self.database.get_cached_ratings(media_id)
             if cached_data:
-                self.home_window.setProperty(
-                    f"altus.cachedRatings.{media_id}", json.dumps(cached_data)
-                )
+                self._set_cached_property(media_id, json.dumps(cached_data))
                 self._update_window_properties(cached_data)
                 self.last_set_id = cached_data.get("imdbid") or media_id
                 return
@@ -115,8 +115,8 @@ class RatingsMonitor:
             if media_id != self.pending_id:
                 return
 
-            api_key = self.get_infolabel("Skin.String(mdblist_api_key)")
-            client = MDbListClient(api_key, self.database)
+            self.mdblist_client.api_key = self.get_infolabel("Skin.String(mdblist_api_key)")
+            client = self.mdblist_client
 
             imdb_id = meta.get("imdb_id")
             tmdb_id = meta.get("tmdb_id")
@@ -127,7 +127,7 @@ class RatingsMonitor:
                 lookup_id = media_id
 
             result = client.get_ratings_from_api(
-                lookup_id, meta.get("media_type", "movie")
+                lookup_id, meta.get("media_type", "movie"), config=self.config
             )
 
             if media_id != self.pending_id:
@@ -152,15 +152,24 @@ class RatingsMonitor:
 
         imdb_id = result.get("imdbid")
         tmdb_id = result.get("tmdbid")
+        payload = json.dumps(result)
 
         if imdb_id:
-            self.home_window.setProperty(
-                f"altus.cachedRatings.{imdb_id}", json.dumps(result)
-            )
+            self._set_cached_property(imdb_id, payload)
         if tmdb_id:
-            self.home_window.setProperty(
-                f"altus.cachedRatings.{tmdb_id}", json.dumps(result)
-            )
+            self._set_cached_property(tmdb_id, payload)
+
+    def _set_cached_property(self, media_id: str, payload: str) -> None:
+        """Write a per-item cache property and register the id for later cleanup."""
+        self.home_window.setProperty(f"altus.cachedRatings.{media_id}", payload)
+        try:
+            index_raw = self.home_window.getProperty(CACHED_IDS_INDEX_PROP)
+            ids = set(json.loads(index_raw)) if index_raw else set()
+            if media_id not in ids:
+                ids.add(media_id)
+                self.home_window.setProperty(CACHED_IDS_INDEX_PROP, json.dumps(list(ids)))
+        except (ValueError, json.JSONDecodeError):
+            self.home_window.setProperty(CACHED_IDS_INDEX_PROP, json.dumps([media_id]))
 
     def _update_window_properties(self, result: Dict[str, Any]) -> None:
         """Update window properties with new ratings data."""
@@ -181,7 +190,19 @@ class RatingsMonitor:
         # List of all rating properties to clear
         for key, value in EMPTY_RATINGS.items():
             home_window.setProperty(f"altus.{key}", str(value))
-    
+
+    @staticmethod
+    def clear_cached_props_static(home_window):
+        """Clear every per-item cachedRatings.{id} property using the index registry."""
+        index_raw = home_window.getProperty(CACHED_IDS_INDEX_PROP)
+        if index_raw:
+            try:
+                for media_id in json.loads(index_raw):
+                    home_window.clearProperty(f"altus.cachedRatings.{media_id}")
+            except (ValueError, json.JSONDecodeError):
+                pass
+        home_window.clearProperty(CACHED_IDS_INDEX_PROP)
+
 
     def _get_current_item_meta(self) -> Optional[Dict[str, Any]]:
         """Get metadata for the current item."""
@@ -192,7 +213,7 @@ class RatingsMonitor:
         else:
             if not xbmc.getCondVisibility("Window.IsVisible(contextmenu) | Window.IsVisible(movieinformation)"):
                 self.home_window.clearProperty("CurrentDBType")
-        if not (dbtype in ["movie", "tvshow", "episode", "season"] or 
+        if not (dbtype in ["movie", "tvshow", "episode", "season"] or
             path.startswith("plugin://plugin.video.mediafusion")):
             return None
 

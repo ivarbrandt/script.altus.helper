@@ -187,10 +187,8 @@ class RatingsDatabase:
                 )
                 cursor.execute("VACUUM")
                 home_window = xbmcgui.Window(10000)
-                timestamp = str(int(time.time()))
-                home_window.setProperty("altus.ratings_cache_invalidated", timestamp)
-                xbmc.log(f"Set cache invalidation marker: altus.ratings_cache_invalidated = {timestamp}", 2)
                 from modules.monitors.ratings import RatingsMonitor
+                RatingsMonitor.clear_cached_props_static(home_window)
                 RatingsMonitor.clear_properties_static(home_window)
                 if not silent:
                     dialog = xbmcgui.Dialog()

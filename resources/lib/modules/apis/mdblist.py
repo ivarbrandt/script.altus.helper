@@ -23,7 +23,7 @@ class MDbListClient(BaseAPIClient):
         return datetime_object
 
     def get_ratings_from_api(
-        self, id_with_type: str, media_type: str = "movie"
+        self, id_with_type: str, media_type: str = "movie", config=None
     ) -> Dict[str, Any]:
         # """Fetch ratings with database check first."""
         # # Check database cache first
@@ -38,9 +38,9 @@ class MDbListClient(BaseAPIClient):
             else:
                 url = f"{self.base_url}?apikey={self.api_key}&i={id_with_type}"
 
-            response = self.session.get(url)
+            response = self.session.get(url, timeout=5)
             if response.status_code == 200:
-                result = self._process_response(response.json())
+                result = self._process_response(response.json(), config)
                 if result:
                     self.database.update_ratings(id_with_type, result)
                 return result
@@ -48,7 +48,7 @@ class MDbListClient(BaseAPIClient):
             pass
         return {}
 
-    def _process_response(self, json_data: Dict) -> Dict[str, Any]:
+    def _process_response(self, json_data: Dict, config=None) -> Dict[str, Any]:
         """Process API response data."""
         try:
             data = {
@@ -59,15 +59,9 @@ class MDbListClient(BaseAPIClient):
             # Process digital release info
             released_digital = json_data.get("released_digital")
             try:
-                recent_days = int(
-                    xbmc.getInfoLabel("Skin.String(altus_digital_release_window)")
-                    or "7"
-                )
-                expired_days = int(
-                    xbmc.getInfoLabel("Skin.String(altus_digital_expired_window)")
-                    or "21"
-                )
-            except ValueError:
+                recent_days = int(config.recent_days) if config else 7
+                expired_days = int(config.expired_days) if config else 21
+            except (ValueError, AttributeError):
                 recent_days = 7
                 expired_days = 21
 
