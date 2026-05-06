@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import xbmc, xbmcaddon, xbmcvfs, xbmcgui
+import json
 import re
 import threading
 
@@ -276,17 +277,35 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
     ACTION_PREVIOUS_MENU = 10
     ACTION_NAV_BACK = 92
     BASE_DIR = "special://skin/media/iconpicker/monochrome/"
+    MANIFEST_PATH = "special://skin/resources/iconpicker_manifest.json"
 
     def __init__(self, *args, **kwargs):
         self.selected = None
         self.folders = []
+        self.manifest = {}
         self.current_icons = []
         self.current_folder_idx = -1
         super().__init__(*args, **kwargs)
 
+    def _load_manifest(self):
+        # Reads the iconpicker manifest so icons can render from Textures.xbt
+        # without needing the loose PNGs on disk.
+        fh = xbmcvfs.File(self.MANIFEST_PATH)
+        try:
+            data = fh.read()
+        finally:
+            fh.close()
+        if not data:
+            return {}
+        try:
+            return json.loads(data)
+        except ValueError as e:
+            xbmc.log("[altus.helper] iconpicker manifest parse failed: %s" % e, xbmc.LOGERROR)
+            return {}
+
     def onInit(self):
-        dirs, _ = xbmcvfs.listdir(self.BASE_DIR)
-        self.folders = sorted(dirs)
+        self.manifest = self._load_manifest()
+        self.folders = sorted(self.manifest.keys())
         if not self.folders:
             self.close()
             return
@@ -304,11 +323,9 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
         if idx == self.current_folder_idx:
             return
         folder = self.folders[idx]
-        folder_path = self.BASE_DIR + folder + "/"
-        _, files = xbmcvfs.listdir(folder_path)
-        self.current_icons = sorted(
-            [f for f in files if f.lower().endswith(".png")]
-        )
+        # Relative path so Kodi resolves through Textures.xbt, not xbmcvfs
+        folder_path = "iconpicker/monochrome/%s/" % folder
+        self.current_icons = list(self.manifest.get(folder, []))
         self.current_folder_idx = idx
         self.getControl(self.HEADER_ID).setLabel(
             "Choose icon - %s" % folder
