@@ -326,6 +326,16 @@ def routing():
 
         return SPaths().re_search()
 
+    if mode == "live_search_commit":
+        from modules.search_utils import SPaths
+
+        return SPaths().live_input()
+
+    if mode == "search_key":
+        from modules.search_utils import SPaths
+
+        return SPaths().search_key(action=_get("action", ""), char=_get("char", ""))
+
     if mode == "open_search_window":
         from modules.search_utils import SPaths
 

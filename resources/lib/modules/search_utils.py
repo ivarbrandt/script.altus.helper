@@ -76,7 +76,9 @@ class SPaths:
         if "last_searched" not in cols:
             self.dbcon.execute("ALTER TABLE spath ADD COLUMN last_searched INTEGER")
         if "search_count" not in cols:
-            self.dbcon.execute("ALTER TABLE spath ADD COLUMN search_count INTEGER NOT NULL DEFAULT 0")
+            self.dbcon.execute(
+                "ALTER TABLE spath ADD COLUMN search_count INTEGER NOT NULL DEFAULT 0"
+            )
         self.dbcon.commit()
         self.dbcur = self.dbcon.cursor()
 
@@ -142,6 +144,10 @@ class SPaths:
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
         self.home_window.clearProperty("altus.search.input.trakt.encoded")
+        self.home_window.clearProperty("altus.search.input.display")
+        self.home_window.clearProperty("altus.search.input.before")
+        self.home_window.clearProperty("altus.search.input.after")
+        self.home_window.clearProperty("altus.search.cursor")
         self.home_window.setProperty(
             "altus.search.history.empty",
             "Your search history is empty. Click the search icon above to perform a new search.",
@@ -216,6 +222,10 @@ class SPaths:
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
         self.home_window.clearProperty("altus.search.input.trakt.encoded")
+        self.home_window.clearProperty("altus.search.input.display")
+        self.home_window.clearProperty("altus.search.input.before")
+        self.home_window.clearProperty("altus.search.input.after")
+        self.home_window.clearProperty("altus.search.cursor")
         xbmc.sleep(200)
         count_str = self.home_window.getProperty("altus.search.history.count")
         count = int(count_str) if count_str else 0
@@ -224,10 +234,10 @@ class SPaths:
                 "altus.search.history.empty",
                 "Your search history is empty. Click the search icon to perform a new search.",
             )
-            xbmc.executebuiltin("SetFocus(802)")
+            xbmc.executebuiltin("SetFocus(9101)")
         else:
             self.home_window.clearProperty("altus.search.history.empty")
-            xbmc.executebuiltin("SetFocus(802)")
+            xbmc.executebuiltin("SetFocus(9101)")
 
     def search_input(self, search_term=None, from_history=False):
         if search_term is None or not search_term.strip():
@@ -253,6 +263,7 @@ class SPaths:
         self.home_window.setProperty(
             "altus.search.input.trakt.encoded", encoded_search_term
         )
+        self._set_display(search_term, len(search_term))
         xbmc.sleep(200)
         if not from_history:
             xbmc.executebuiltin("SetFocus(2000)")
@@ -273,10 +284,112 @@ class SPaths:
         xbmc.sleep(100)
         xbmc.executebuiltin("SetFocus(2000)")
 
+    def _set_display(self, text, cursor):
+        """Render the visible input string for the live keyboard. Splits the
+        text into ``before`` and ``after`` halves around the cursor so the
+        skin can build two stacked labels (one with an opaque cursor, one
+        with a transparent one) for a no-jitter blink. The legacy
+        ``input.display`` single-label property is kept for back-compat."""
+        cursor = max(0, min(cursor, len(text)))
+        self.home_window.setProperty("altus.search.cursor", str(cursor))
+        self.home_window.setProperty("altus.search.input.before", text[:cursor])
+        self.home_window.setProperty("altus.search.input.after", text[cursor:])
+        self.home_window.setProperty(
+            "altus.search.input.display", text[:cursor] + "[B]|[/B]" + text[cursor:]
+        )
+
+    def search_key(self, action, char=""):
+        """Per-keystroke entry point for the custom QWERTY keyboard (P8d).
+
+        Maintains a virtual cursor in ``altus.search.cursor``. Edit operations
+        act at the cursor; left/right/home/end move the cursor without
+        triggering a widget reload.
+        """
+        current = self.home_window.getProperty("altus.search.input") or ""
+        cursor_str = self.home_window.getProperty("altus.search.cursor") or ""
+        try:
+            cursor = int(cursor_str)
+        except ValueError:
+            cursor = len(current)
+        cursor = max(0, min(cursor, len(current)))
+
+        if action == "append":
+            new_value = current[:cursor] + char + current[cursor:]
+            new_cursor = cursor + len(char)
+        elif action == "backspace":
+            if cursor == 0:
+                return
+            new_value = current[: cursor - 1] + current[cursor:]
+            new_cursor = cursor - 1
+        elif action == "delete":
+            if cursor >= len(current):
+                return
+            new_value = current[:cursor] + current[cursor + 1 :]
+            new_cursor = cursor
+        elif action == "left":
+            new_value, new_cursor = current, max(0, cursor - 1)
+        elif action == "right":
+            new_value, new_cursor = current, min(len(current), cursor + 1)
+        elif action == "home":
+            new_value, new_cursor = current, 0
+        elif action == "end":
+            new_value, new_cursor = current, len(current)
+        elif action == "space":
+            new_value = current[:cursor] + " " + current[cursor:]
+            new_cursor = cursor + 1
+        elif action == "clear":
+            new_value, new_cursor = "", 0
+        else:
+            return
+
+        if new_value == current and action in ("left", "right", "home", "end"):
+            self._set_display(new_value, new_cursor)
+            return
+        self.live_input(search_term=new_value, cursor=new_cursor)
+
+    def live_input(self, search_term=None, cursor=None):
+        """Push the live input to the search properties without inserting into
+        history. Empty/whitespace clears all search-input properties so widgets
+        unmount cleanly.
+
+        ``cursor`` defaults to end-of-string (used by external callers like
+        history replay); search_key passes its computed cursor explicitly.
+        """
+        if search_term is None:
+            return
+        search_term = (search_term or "").rstrip("\n\r")
+        if not search_term.strip():
+            self.home_window.clearProperty("altus.search.input")
+            self.home_window.clearProperty("altus.search.input.encoded")
+            self.home_window.clearProperty("altus.search.input.trakt.encoded")
+            self.home_window.clearProperty("altus.search.input.display")
+            self.home_window.clearProperty("altus.search.cursor")
+            return
+        self.home_window.setProperty("altus.search.refreshing", "true")
+        encoded = quote(search_term)
+        self.home_window.setProperty("altus.search.input", search_term)
+        self.home_window.setProperty("altus.search.input.encoded", encoded)
+        self.home_window.setProperty("altus.search.input.trakt.encoded", encoded)
+        if cursor is None:
+            cursor = len(search_term)
+        self._set_display(search_term, cursor)
+        xbmc.sleep(200)
+
+        def load_widgets_and_clear_flag():
+            starting_search_widgets()
+            xbmc.sleep(800)
+            self.home_window.clearProperty("altus.search.refreshing")
+
+        Thread(target=load_widgets_and_clear_flag).start()
+
     def toggle_search_provider(self):
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
         self.home_window.clearProperty("altus.search.input.trakt.encoded")
+        self.home_window.clearProperty("altus.search.input.display")
+        self.home_window.clearProperty("altus.search.input.before")
+        self.home_window.clearProperty("altus.search.input.after")
+        self.home_window.clearProperty("altus.search.cursor")
         current_provider = xbmc.getInfoLabel("Skin.String(current_search_provider)")
         if current_provider == "0":
             next_provider = "1"

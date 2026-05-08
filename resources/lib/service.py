@@ -190,7 +190,7 @@ class Service(xbmc.Monitor):
         if not self.get_visibility(
             "Window.IsVisible(videos) | "
             "Window.IsVisible(home) | "
-            "Window.IsVisible(11121) | "
+            "Window.IsVisible(1121) | "
             "Window.IsActive(movieinformation)"
         ):
             return True
