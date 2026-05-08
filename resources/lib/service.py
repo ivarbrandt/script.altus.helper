@@ -166,7 +166,7 @@ class Service(xbmc.Monitor):
             return
         if xbmc.getSkinDir() != "skin.altus":
             return
-        if not self.get_visibility("Window.IsVisible(1121)"):
+        if not self.get_visibility("Window.IsVisible(Home) | Window.IsVisible(1121)"):
             return
         count_str = self.home_window.getProperty("altus.search.history.count")
         try:
@@ -177,6 +177,7 @@ class Service(xbmc.Monitor):
         if count == 0:
             return
         from modules.search_utils import SPaths
+
         SPaths().refresh_search_history()
 
     def _should_pause(self):

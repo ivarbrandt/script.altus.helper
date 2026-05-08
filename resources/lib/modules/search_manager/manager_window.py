@@ -73,14 +73,15 @@ Window properties the dialog sets:
     reorder_detail_*    snapshot of the moving widget's display values
 """
 
+import json
 import threading
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 import xbmc
 import xbmcaddon
 import xbmcgui
 
 from modules.search_manager.config_manager import ConfigManager
-
 
 SKIN_PATH = xbmcaddon.Addon("skin.altus").getAddonInfo("path")
 
@@ -118,29 +119,29 @@ HIDDEN_COLOR = "60FFFFFF"
 # Friendly ↔ internal display-type mapping. Search widgets only use the
 # subset that makes sense for poster / landscape / square content.
 DISPLAY_TYPE_MAP = {
-    "WidgetListBigPoster":          "Big Poster",
-    "WidgetListPoster":             "Poster",
-    "WidgetListSmallPoster":        "Small Poster",
-    "WidgetListSmallPosterFlix":    "Small Poster - Flix",
-    "WidgetListLandscape":          "Landscape",
-    "WidgetListLandscapeFlix":      "Landscape - Flix",
-    "WidgetListSmallLandscape":     "Small Landscape",
+    "WidgetListBigPoster": "Big Poster",
+    "WidgetListPoster": "Poster",
+    "WidgetListSmallPoster": "Small Poster",
+    "WidgetListSmallPosterFlix": "Small Poster - Flix",
+    "WidgetListLandscape": "Landscape",
+    "WidgetListLandscapeFlix": "Landscape - Flix",
+    "WidgetListSmallLandscape": "Small Landscape",
     "WidgetListSmallLandscapeFlix": "Small Landscape - Flix",
-    "WidgetListSquare":             "Square",
-    "WidgetListCategoryStacked":    "Category (Stacked)",
+    "WidgetListSquare": "Square",
+    "WidgetListCategoryStacked": "Category (Stacked)",
 }
 
 # Order matters — drives the select dialog.
 SEARCH_DISPLAY_TYPES = [
-    ("Big Poster",              "WidgetListBigPoster"),
-    ("Poster",                  "WidgetListPoster"),
-    ("Small Poster",            "WidgetListSmallPoster"),
-    ("Small Poster - Flix",     "WidgetListSmallPosterFlix"),
-    ("Landscape",               "WidgetListLandscape"),
-    ("Landscape - Flix",        "WidgetListLandscapeFlix"),
-    ("Small Landscape",         "WidgetListSmallLandscape"),
-    ("Small Landscape - Flix",  "WidgetListSmallLandscapeFlix"),
-    ("Square",                  "WidgetListSquare"),
+    ("Big Poster", "WidgetListBigPoster"),
+    ("Poster", "WidgetListPoster"),
+    ("Small Poster", "WidgetListSmallPoster"),
+    ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
+    ("Landscape", "WidgetListLandscape"),
+    ("Landscape - Flix", "WidgetListLandscapeFlix"),
+    ("Small Landscape", "WidgetListSmallLandscape"),
+    ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
+    ("Square", "WidgetListSquare"),
 ]
 
 KINDS = [
@@ -162,8 +163,33 @@ KINDS = [
 
 TARGETS = ["videos", "music"]
 
+# Library plugin URL surface — used by Test This Path to distinguish
+# malformed library paths from legitimate empty result sets. Mirrors the
+# TYPES dict in modules/library_search.py.
+LIBRARY_URL_PREFIX = "plugin://script.altus.helper/"
+LIBRARY_TYPES = frozenset({
+    "movies", "tvshows", "seasons", "episodes",
+    "musicvideos", "songs", "albums", "artists",
+})
+
+
+def _parse_library_url(url):
+    """If ``url`` targets the library_search plugin, return its ``type`` param
+    (possibly an unknown value, possibly None if missing). Otherwise return
+    the sentinel ``False`` so callers can distinguish "not a library URL" from
+    "library URL with no type"."""
+    if not url or not url.startswith(LIBRARY_URL_PREFIX):
+        return False
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    if qs.get("mode", [""])[0] != "library_search":
+        return False
+    types = qs.get("type", [])
+    return types[0] if types else None
+
 
 # ───────────────────────────────────────────────────────────── helpers
+
 
 def _friendly(internal_name):
     """Map internal display type name to friendly name (or pass through)."""
@@ -225,6 +251,7 @@ def _restore_query_placeholder(url_prefix, variant):
 
 # ────────────────────────────────────────────────────── service monitor
 
+
 class _ServiceMonitor(threading.Thread):
     """Polls focus state every 100ms and auto-toggles the inline-button
     highlight based on which control has focus.
@@ -273,6 +300,7 @@ class _ServiceMonitor(threading.Thread):
 
 
 # ─────────────────────────────────────────────────────── dialog class
+
 
 class SearchManagerDialog(xbmcgui.WindowXMLDialog):
     def __init__(self, *args, **kwargs):
@@ -344,8 +372,10 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
             shown_type = _friendly(w.get("stacked_type") or "")
         else:
             shown_type = _friendly(w.get("display_type") or "")
-        line2 = "%s | Stacked" % shown_type if is_stacked and shown_type else (
-            "Stacked" if is_stacked else shown_type
+        line2 = (
+            "%s | Stacked" % shown_type
+            if is_stacked and shown_type
+            else ("Stacked" if is_stacked else shown_type)
         )
         if hidden:
             line2 = _dim_label(line2)
@@ -405,9 +435,7 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
         except Exception:
             return
         for prop in self._REORDER_FREEZE_PROPS:
-            self.setProperty(
-                "reorder_detail_%s" % prop, item.getProperty(prop)
-            )
+            self.setProperty("reorder_detail_%s" % prop, item.getProperty(prop))
 
     def _unfreeze_detail(self):
         for prop in self._REORDER_FREEZE_PROPS:
@@ -505,11 +533,7 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
         elif control_id == TOGGLE_STACKED_BTN:
             self._toggle_stacked()
         elif control_id == TEST_PATH_BTN:
-            xbmcgui.Dialog().notification(
-                "Test This Path",
-                "Coming in P7",
-                xbmcgui.NOTIFICATION_INFO, 1500,
-            )
+            self._test_path()
 
     def _fire_inline_button(self):
         if self.btn_idx < 0:
@@ -542,7 +566,10 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
             new_id = self._build_custom_widget()
         else:
             xbmcgui.Dialog().notification(
-                "Auto-discover", "Coming in P11", xbmcgui.NOTIFICATION_INFO, 2500,
+                "Auto-discover",
+                "Coming in P11",
+                xbmcgui.NOTIFICATION_INFO,
+                2500,
             )
             return
         if new_id is None:
@@ -620,7 +647,9 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
         if not url_base or url_base == url_hint:
             return None
 
-        kb = xbmc.Keyboard("", "Widget label (will be prefixed with [%s])" % kind.upper())
+        kb = xbmc.Keyboard(
+            "", "Widget label (will be prefixed with [%s])" % kind.upper()
+        )
         kb.doModal()
         if not kb.isConfirmed():
             return None
@@ -693,9 +722,17 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
     # All the properties we set on a ListItem in _set_item_props — used by
     # _swap_items to exchange identities without a list reset.
     _ITEM_PROPS = (
-        "widget_id", "widget_label", "kind", "url_template", "url_display",
-        "display_type", "display_type_internal", "target",
-        "is_stacked", "stacked_type", "hidden",
+        "widget_id",
+        "widget_label",
+        "kind",
+        "url_template",
+        "url_display",
+        "display_type",
+        "display_type_internal",
+        "target",
+        "is_stacked",
+        "stacked_type",
+        "hidden",
     )
 
     # Properties to snapshot on reorder entry. Mirror the detail panel's
@@ -703,8 +740,12 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
     # (with reorder_detail_ prefix) by SM_Detail* variables in
     # Includes_SearchManager.xml.
     _REORDER_FREEZE_PROPS = (
-        "widget_label", "kind", "url_display",
-        "display_type", "target", "is_stacked",
+        "widget_label",
+        "kind",
+        "url_display",
+        "display_type",
+        "target",
+        "is_stacked",
     )
 
     def _swap_items(self, idx_a, idx_b):
@@ -844,7 +885,9 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
         except ValueError:
             preselect = -1
         idx = xbmcgui.Dialog().select(
-            "Content Type", KINDS, preselect=preselect,
+            "Content Type",
+            KINDS,
+            preselect=preselect,
         )
         if idx < 0:
             return
@@ -866,7 +909,8 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
             if _detect_query_variant(cur_url) != target_variant:
                 prefix = _strip_query_placeholder(cur_url)
                 fields["url_template"] = _restore_query_placeholder(
-                    prefix, target_variant,
+                    prefix,
+                    target_variant,
                 )
         self._apply_field_update(wid, fields)
 
@@ -902,12 +946,14 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
         if widget is None:
             return
         is_stacked = bool(widget.get("is_stacked"))
-        cur_internal = (widget.get("stacked_type") if is_stacked
-                        else widget.get("display_type")) or ""
+        cur_internal = (
+            widget.get("stacked_type") if is_stacked else widget.get("display_type")
+        ) or ""
         names = [f for f, _ in SEARCH_DISPLAY_TYPES]
         try:
             preselect = next(
-                i for i, (_, internal) in enumerate(SEARCH_DISPLAY_TYPES)
+                i
+                for i, (_, internal) in enumerate(SEARCH_DISPLAY_TYPES)
                 if internal == cur_internal
             )
         except StopIteration:
@@ -957,10 +1003,159 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
             demoted = widget.get("display_type") or "WidgetListSmallPoster"
             self._apply_field_update(
                 wid,
-                {"is_stacked": 1,
-                 "display_type": "WidgetListCategoryStacked",
-                 "stacked_type": demoted},
+                {
+                    "is_stacked": 1,
+                    "display_type": "WidgetListCategoryStacked",
+                    "stacked_type": demoted,
+                },
             )
+
+    def _test_path(self):
+        """Substitute a sample query into the selected widget's URL template,
+        run Files.GetDirectory, and show a count + first-5-labels result.
+
+        No DB changes — purely diagnostic. Replaces both query placeholder
+        variants (encoded + trakt.encoded) with the URL-encoded sample so
+        Trakt-list widgets test against the right input.
+        """
+        wid = self._selected_widget_id()
+        if wid is None:
+            return
+        widget = self.cm.get_widget(wid)
+        if widget is None:
+            return
+        url_template = widget.get("url_template") or ""
+        if not url_template:
+            xbmcgui.Dialog().ok("Test This Path", "This widget has no path.")
+            return
+
+        # Gate on addon availability so we don't hand the user an opaque
+        # JSON-RPC error. HasAddon = installed; AddonIsEnabled = enabled —
+        # check both so the message points at the right fix.
+        source_addon_id = widget.get("source_addon_id")
+        if source_addon_id:
+            if not xbmc.getCondVisibility("System.HasAddon(%s)" % source_addon_id):
+                # Not installed → can't read addon.xml, so fall back to the id.
+                xbmcgui.Dialog().ok(
+                    "Test This Path",
+                    "[B]%s[/B] is not installed." % source_addon_id,
+                )
+                return
+            if not xbmc.getCondVisibility(
+                "System.AddonIsEnabled(%s)" % source_addon_id
+            ):
+                # xbmcaddon.Addon(id) raises for disabled addons. Use
+                # Addons.GetAddonDetails JSON-RPC, which reports regardless of
+                # enabled state.
+                detail_req = json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "Addons.GetAddonDetails",
+                        "params": {
+                            "addonid": source_addon_id,
+                            "properties": ["name"],
+                        },
+                        "id": 1,
+                    }
+                )
+                try:
+                    detail = json.loads(xbmc.executeJSONRPC(detail_req))
+                    name = detail["result"]["addon"]["name"]
+                except (KeyError, ValueError):
+                    name = source_addon_id
+                xbmcgui.Dialog().ok(
+                    "Test This Path",
+                    "[B]%s[/B] is disabled." % (name or source_addon_id),
+                )
+                return
+
+        kb = xbmc.Keyboard("Inception", "Sample query")
+        kb.doModal()
+        if not kb.isConfirmed():
+            return
+        query = kb.getText().strip()
+        if not query:
+            return
+
+        encoded = quote_plus(query)
+        url = url_template.replace(
+            "$INFO[Window(home).Property(altus.search.input.encoded)]",
+            encoded,
+        ).replace(
+            "$INFO[Window(home).Property(altus.search.input.trakt.encoded)]",
+            encoded,
+        )
+
+        # Pre-flight validation for library URLs: they're our own plugin so we
+        # know what a malformed path looks like. Catch bad/missing 'type'
+        # before the JSON-RPC round-trip.
+        lib_type = _parse_library_url(url)
+        if lib_type is not False and lib_type not in LIBRARY_TYPES:
+            xbmcgui.Dialog().ok(
+                "Test This Path",
+                "[COLOR red][B]Bad library path[/B][/COLOR][CR][CR]"
+                "Type [B]%s[/B] is not recognized." % (lib_type or "(missing)"),
+            )
+            return
+
+        request = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "Files.GetDirectory",
+                "params": {
+                    "directory": url,
+                    "media": "files",
+                },
+                "id": 1,
+            }
+        )
+        raw = xbmc.executeJSONRPC(request)
+        try:
+            response = json.loads(raw)
+        except ValueError:
+            xbmcgui.Dialog().ok("Test This Path", "Bad JSON response:[CR]%s" % raw)
+            return
+
+        if "error" in response:
+            err = response["error"]
+            msg = err.get("message", str(err))
+            xbmcgui.Dialog().ok(
+                "Test This Path", "[COLOR red][B]ERROR[/B][/COLOR][CR][CR]%s" % msg
+            )
+            return
+
+        files = response.get("result", {}).get("files") or []
+        count = len(files)
+        if count == 0:
+            # Library widget: path was validated above, so 0 means the library
+            # genuinely has nothing matching — no need to show the URL.
+            if lib_type is not False:
+                xbmcgui.Dialog().ok(
+                    "Test This Path",
+                    "[COLOR red][B]0[/B][/COLOR] library results for "
+                    "[B]%s[/B] in [B]%s[/B]." % (query, lib_type),
+                )
+                return
+            xbmcgui.Dialog().ok(
+                "Test This Path",
+                "[COLOR red][B]0[/B][/COLOR] results for [B]%s[/B][CR][CR][B]PATH:[/B] %s"
+                % (query, url),
+            )
+            return
+
+        titles = ", ".join((f.get("label") or f.get("title") or "?") for f in files[:5])
+        more = (" and %d more" % (count - 5)) if count > 5 else ""
+        xbmcgui.Dialog().ok(
+            "Test This Path",
+            "[COLOR limegreen][B]%d[/B][/COLOR] result%s for [B]%s[/B][CR][CR]%s%s"
+            % (
+                count,
+                "" if count == 1 else "s",
+                query,
+                titles,
+                more,
+            ),
+        )
 
     def _apply_field_update(self, wid, fields):
         self.cm.update_widget(wid, **fields)
@@ -973,8 +1168,17 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
 
 
 def open_manager():
+    # Seed defaults if the DB is empty — covers users who skipped or predate
+    # the StartHelp first-run flow. Mirrors widget_manager._ensure_config_exists.
+    from modules.search_manager.default_config import ensure_search_config
+
+    seeded = ensure_search_config()
+
     dlg = SearchManagerDialog(
-        "DialogSearchManager.xml", SKIN_PATH, "default", "1080i",
+        "DialogSearchManager.xml",
+        SKIN_PATH,
+        "default",
+        "1080i",
     )
     dlg.doModal()
     changed = bool(getattr(dlg, "changed", False))
@@ -982,6 +1186,7 @@ def open_manager():
     # Reload the skin after the dialog is fully gone, never during its
     # own onAction. This avoids tearing the dialog UI down mid-frame and
     # keeps Back/close behaviour deterministic.
-    if changed:
+    if changed or seeded:
         from modules.search_manager.xml_generator import generate_and_reload
+
         generate_and_reload()
