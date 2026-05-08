@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import time
 import xbmc, xbmcgui, xbmcvfs
 import sqlite3 as database
 from modules import xmls
@@ -26,6 +27,32 @@ default_xmls = {
 default_path = "addons://sources/video"
 
 
+def _humanize_timestamp(ts):
+    """Render a unix timestamp as a relative phrase ('3 days ago')."""
+    if not ts:
+        return ""
+    diff = int(time.time()) - int(ts)
+    if diff < 60:
+        return "just now"
+    if diff < 3600:
+        n = diff // 60
+        return "%d minute%s ago" % (n, "" if n == 1 else "s")
+    if diff < 86400:
+        n = diff // 3600
+        return "%d hour%s ago" % (n, "" if n == 1 else "s")
+    if diff < 86400 * 7:
+        n = diff // 86400
+        return "%d day%s ago" % (n, "" if n == 1 else "s")
+    if diff < 86400 * 30:
+        n = diff // (86400 * 7)
+        return "%d week%s ago" % (n, "" if n == 1 else "s")
+    if diff < 86400 * 365:
+        n = diff // (86400 * 30)
+        return "%d month%s ago" % (n, "" if n == 1 else "s")
+    n = diff // (86400 * 365)
+    return "%d year%s ago" % (n, "" if n == 1 else "s")
+
+
 class SPaths:
     def __init__(self, spaths=None):
         self.connect_database()
@@ -44,15 +71,42 @@ class SPaths:
         self.dbcon.execute(
             "CREATE TABLE IF NOT EXISTS spath (spath_id INTEGER PRIMARY KEY AUTOINCREMENT, spath text)"
         )
+        # Schema migration: existing installs may be missing the new columns.
+        cols = [r[1] for r in self.dbcon.execute("PRAGMA table_info(spath)").fetchall()]
+        if "last_searched" not in cols:
+            self.dbcon.execute("ALTER TABLE spath ADD COLUMN last_searched INTEGER")
+        if "search_count" not in cols:
+            self.dbcon.execute("ALTER TABLE spath ADD COLUMN search_count INTEGER NOT NULL DEFAULT 0")
+        self.dbcon.commit()
         self.dbcur = self.dbcon.cursor()
 
     def add_spath_to_database(self, spath):
+        """Insert-or-update a search term.
+
+        On first sight: insert with search_count=1 and last_searched=now.
+        On repeat: bump search_count and stamp last_searched=now in place.
+        Returns the spath_id for the stored row.
+        """
         self.refresh_spaths = True
-        self.dbcur.execute(
-            "INSERT INTO spath (spath) VALUES (?)",
+        now = int(time.time())
+        existing = self.dbcur.execute(
+            "SELECT spath_id, search_count FROM spath WHERE spath = ?",
             (spath,),
-        )
+        ).fetchone()
+        if existing:
+            spath_id, count = existing
+            self.dbcur.execute(
+                "UPDATE spath SET search_count = ?, last_searched = ? WHERE spath_id = ?",
+                ((count or 0) + 1, now, spath_id),
+            )
+        else:
+            self.dbcur.execute(
+                "INSERT INTO spath (spath, search_count, last_searched) VALUES (?, 1, ?)",
+                (spath, now),
+            )
+            spath_id = self.dbcur.lastrowid
         self.dbcon.commit()
+        return spath_id
 
     def remove_spath_from_database(self, spath_id):
         self.refresh_spaths = True
@@ -82,6 +136,8 @@ class SPaths:
         for i in range(1, 101):
             self.home_window.clearProperty(f"altus.search.history.{i}")
             self.home_window.clearProperty(f"altus.search.history.{i}.id")
+            self.home_window.clearProperty(f"altus.search.history.{i}.count")
+            self.home_window.clearProperty(f"altus.search.history.{i}.last")
         self.home_window.setProperty("altus.search.history.count", "0")
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
@@ -93,8 +149,14 @@ class SPaths:
         return True
 
     def fetch_all_spaths(self):
+        """Return all rows ordered by most-recent-search first.
+
+        Falls back to spath_id DESC for any rows that pre-date the
+        last_searched column (NULL timestamps sort last).
+        """
         results = self.dbcur.execute(
-            "SELECT * FROM spath ORDER BY spath_id DESC"
+            "SELECT spath_id, spath, search_count, last_searched FROM spath "
+            "ORDER BY COALESCE(last_searched, 0) DESC, spath_id DESC"
         ).fetchall()
         return results
 
@@ -105,14 +167,33 @@ class SPaths:
         return result[0] if result else None
 
     def refresh_search_history(self):
-        """Method to refresh search history properties"""
+        """Rewrite all per-history-item window properties from the DB.
+
+        Sets, per index i ∈ 1..max_history_items:
+            altus.search.history.{i}        the search term
+            altus.search.history.{i}.id     spath_id
+            altus.search.history.{i}.count  cumulative search_count
+            altus.search.history.{i}.last   "3 days ago" relative phrase
+        Plus the aggregate altus.search.history.count and the empty-state
+        message.
+        """
         history = self.fetch_all_spaths()
         for i in range(1, self.max_history_items + 1):
             self.home_window.clearProperty(f"altus.search.history.{i}")
             self.home_window.clearProperty(f"altus.search.history.{i}.id")
-        for i, (id, term) in enumerate(history[: self.max_history_items], 1):
+            self.home_window.clearProperty(f"altus.search.history.{i}.count")
+            self.home_window.clearProperty(f"altus.search.history.{i}.last")
+        for i, row in enumerate(history[: self.max_history_items], 1):
+            spath_id, term, search_count, last_searched = row
             self.home_window.setProperty(f"altus.search.history.{i}", term)
-            self.home_window.setProperty(f"altus.search.history.{i}.id", str(id))
+            self.home_window.setProperty(f"altus.search.history.{i}.id", str(spath_id))
+            self.home_window.setProperty(
+                f"altus.search.history.{i}.count", str(search_count or 0)
+            )
+            self.home_window.setProperty(
+                f"altus.search.history.{i}.last",
+                _humanize_timestamp(last_searched),
+            )
         count = min(len(history), self.max_history_items)
         self.home_window.setProperty("altus.search.history.count", str(count))
         if count == 0:
@@ -123,43 +204,10 @@ class SPaths:
         else:
             self.home_window.clearProperty("altus.search.history.empty")
 
-    def update_search_history_properties(self, search_term, existing_spath_id):
-        """Update search history properties to reflect a new search term. Moves existing terms down and places the new/existing term at the top."""
-        count_str = self.home_window.getProperty("altus.search.history.count")
-        count = int(count_str) if count_str else 0
-        existing_property_index = None
-        for i in range(1, count + 1):
-            if self.home_window.getProperty(f"altus.search.history.{i}") == search_term:
-                existing_property_index = i
-                break
-        if existing_property_index is not None:
-            term_to_move = self.home_window.getProperty(
-                f"altus.search.history.{existing_property_index}"
-            )
-            id_to_move = self.home_window.getProperty(
-                f"altus.search.history.{existing_property_index}.id"
-            )
-            for i in range(existing_property_index, 1, -1):
-                prev_term = self.home_window.getProperty(f"altus.search.history.{i-1}")
-                prev_id = self.home_window.getProperty(f"altus.search.history.{i-1}.id")
-                self.home_window.setProperty(f"altus.search.history.{i}", prev_term)
-                self.home_window.setProperty(f"altus.search.history.{i}.id", prev_id)
-            self.home_window.setProperty("altus.search.history.1", term_to_move)
-            self.home_window.setProperty("altus.search.history.1.id", id_to_move)
-        else:
-            for i in range(min(count, self.max_history_items - 1), 0, -1):
-                term = self.home_window.getProperty(f"altus.search.history.{i}")
-                term_id = self.home_window.getProperty(f"altus.search.history.{i}.id")
-                self.home_window.setProperty(f"altus.search.history.{i+1}", term)
-                self.home_window.setProperty(f"altus.search.history.{i+1}.id", term_id)
-            self.home_window.setProperty("altus.search.history.1", search_term)
-            self.home_window.setProperty(
-                "altus.search.history.1.id", str(existing_spath_id)
-            )
-            if count < self.max_history_items:
-                self.home_window.setProperty(
-                    "altus.search.history.count", str(count + 1)
-                )
+    # update_search_history_properties was an in-place property shifter that
+    # mirrored the old delete+re-add flow. With the upsert + sort-by-timestamp
+    # model, refresh_search_history() rewrites all properties from the DB
+    # canonically — simpler, and it picks up count/last bookkeeping for free.
 
     def open_search_window(self):
         """Open search window and focus appropriate control based on history state"""
@@ -194,12 +242,12 @@ class SPaths:
                 return
         self.home_window.setProperty("altus.search.refreshing", "true")
         encoded_search_term = quote(search_term)
-        existing_spath_id = self.check_spath_exists(search_term)
-        if existing_spath_id:
-            self.remove_spath_from_database(existing_spath_id)
+        # Upsert: increments search_count if the term already exists, else
+        # inserts with count=1. Either way, last_searched is bumped to now.
         self.add_spath_to_database(search_term)
-        existing_spath_id = self.check_spath_exists(search_term)
-        self.update_search_history_properties(search_term, existing_spath_id)
+        # Rewrite all history properties from the DB. Cheap (≤100 setProperty
+        # calls) and keeps count/last in lockstep with the DB.
+        self.refresh_search_history()
         self.home_window.setProperty("altus.search.input", search_term)
         self.home_window.setProperty("altus.search.input.encoded", encoded_search_term)
         self.home_window.setProperty(

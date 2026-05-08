@@ -1,6 +1,7 @@
 import xbmc, xbmcgui, xbmcvfs
 import json
 import os
+import time
 from threading import Thread
 from modules.logger import logger
 from modules.monitors.ratings import RatingsMonitor
@@ -31,6 +32,7 @@ class Service(xbmc.Monitor):
         self._last_content_type = None
         self._view_prefs_cache = {}
         self._view_prefs_mtime = 0
+        self._last_history_refresh = 0.0
 
     def run(self):
         """Start the service and monitor."""
@@ -46,6 +48,7 @@ class Service(xbmc.Monitor):
                 self._check_stacked_widgets(on_home)
             else:
                 self._was_on_home = False
+            self._check_search_history_refresh()
             if self._should_pause():
                 self.waitForAbort(2)
                 continue
@@ -150,6 +153,31 @@ class Service(xbmc.Monitor):
                         break
                     xbmc.sleep(20)
                 xbmc.executebuiltin(f'Container.SetViewMode({saved_view["viewid"]})')
+
+    def _check_search_history_refresh(self):
+        """Re-humanize search-history .last labels on a 60-second cadence.
+
+        The humanized timestamp ("3 minutes ago") is computed once at write
+        time and goes stale immediately. Refresh while a search-relevant
+        window is visible so users see live values.
+        """
+        now = time.monotonic()
+        if now - self._last_history_refresh < 60:
+            return
+        if xbmc.getSkinDir() != "skin.altus":
+            return
+        if not self.get_visibility("Window.IsVisible(1121)"):
+            return
+        count_str = self.home_window.getProperty("altus.search.history.count")
+        try:
+            count = int(count_str) if count_str else 0
+        except ValueError:
+            count = 0
+        self._last_history_refresh = now
+        if count == 0:
+            return
+        from modules.search_utils import SPaths
+        SPaths().refresh_search_history()
 
     def _should_pause(self):
         if self.home_window.getProperty("pause_services") == "true":

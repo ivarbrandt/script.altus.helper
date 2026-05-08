@@ -50,6 +50,21 @@ def routing():
 
         return open_channel_guide()
 
+    if mode == "refresh_search_history":
+        from modules.search_utils import SPaths
+
+        return SPaths().refresh_search_history()
+
+    if mode == "generate_search_xml":
+        from modules.search_manager.xml_generator import generate_and_reload
+
+        return generate_and_reload()
+
+    if mode == "open_search_manager":
+        from modules.search_manager.manager_window import open_manager
+
+        return open_manager()
+
     if "actions" in mode:
         from modules import actions
 
@@ -275,11 +290,6 @@ def routing():
         config = cm.get_full_config()
         cm.close()
         return _init_stacked_widgets(config)
-
-    if mode == "refresh_search_history":
-        from modules.search_utils import SPaths
-
-        return SPaths().refresh_search_history()
 
     if mode == "search_input":
         from modules.search_utils import SPaths
