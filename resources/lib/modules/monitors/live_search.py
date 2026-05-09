@@ -22,6 +22,33 @@ SEARCH_WINDOW_ID = 11121  # 1121 declared, runtime-shifted (see custom-window-id
 _ENCODED_MARKER = "$INFO[Window(home).Property(altus.search.input.encoded)]"
 _TRAKT_MARKER = "$INFO[Window(home).Property(altus.search.input.trakt.encoded)]"
 
+# Cross-process sentinel for "this term was already committed to history".
+# Both LiveSearchMonitor (post-widget-focus) and search_utils.search_input
+# (post-add_spath_to_database) write this on commit; both check it before
+# firing a fresh commit. Cleared when input goes empty.
+COMMITTED_TERM_PROPERTY = "altus.search.last_committed.lower"
+
+
+def write_resolved_widget_paths(encoded_term):
+    """Resolve every visible search widget's url_template against the given
+    URL-encoded query and publish to each widget's path property. Used by
+    both the keystroke-debounced refresh path (LiveSearchMonitor) and the
+    keyboard-confirmed search path (search_utils.search_input) — the latter
+    needs to bypass the debounce so widgets are loadable when re_search's
+    SetFocus(2000) lands."""
+    from modules.search_manager.xml_generator import (
+        iter_visible_widgets_with_ids,
+    )
+    import xbmcgui as _xbmcgui
+
+    home = _xbmcgui.Window(10000)
+    for list_id, w in iter_visible_widgets_with_ids():
+        template = w["url_template"]
+        resolved = template.replace(_ENCODED_MARKER, encoded_term).replace(
+            _TRAKT_MARKER, encoded_term
+        )
+        home.setProperty("altus.search.widget.%s.path" % list_id, resolved)
+
 
 class LiveSearchMonitor(threading.Thread):
     """Debounces live-search widget refreshes.
@@ -52,21 +79,40 @@ class LiveSearchMonitor(threading.Thread):
         self._widget_cache = self._load_widget_cache()
         from modules.search_manager.xml_generator import INITIAL_PATH
         self._write_resting_paths(INITIAL_PATH)
+        # Last term committed to history this session — guards against the
+        # tick loop firing repeated commits while focus lingers in the widget
+        # range. add_spath_to_database is idempotent (COLLATE NOCASE) but
+        # refresh_search_history rewrites ~100 properties, so dedup pays off.
+        self._last_committed_term = None
 
     def _load_widget_cache(self):
         """Snapshot of (list_id, url_template) for every visible search
         widget, in the same order/id-allocation that xml_generator uses.
         Cached at service start; ReloadSkin() after a manager save restarts
-        this service, so the cache stays in sync without per-fire DB reads."""
+        this service, so the cache stays in sync without per-fire DB reads.
+
+        Also populates ``self._widget_focus_ids`` — the exact set of control
+        ids that count as "user accepted this query" for P8e history commit.
+        Using a numeric range here would catch unrelated widget list_ids in
+        the search window (e.g. 27100/27300 for recent add-ons) and fire
+        the commit prematurely on initial focus."""
         try:
             from modules.search_manager.xml_generator import (
                 iter_visible_widgets_with_ids,
             )
-            return [
-                (list_id, w["url_template"])
-                for list_id, w in iter_visible_widgets_with_ids()
-            ]
+            cache = []
+            focus_ids = set()
+            for list_id, w in iter_visible_widgets_with_ids():
+                cache.append((list_id, w["url_template"]))
+                focus_ids.add(list_id)
+                # Stacked child id matches xml_generator's "{parent}1" rule.
+                # Adding it unconditionally is harmless — non-stacked widgets
+                # never produce a control with that id, so it can't fire.
+                focus_ids.add(int("%s1" % list_id))
+            self._widget_focus_ids = focus_ids
+            return cache
         except Exception:
+            self._widget_focus_ids = set()
             return []
 
     def _path_property(self, list_id):
@@ -77,11 +123,7 @@ class LiveSearchMonitor(threading.Thread):
             self.home_window.setProperty(self._path_property(list_id), value)
 
     def _write_resolved_paths(self, encoded):
-        for list_id, template in self._widget_cache:
-            resolved = template.replace(_ENCODED_MARKER, encoded).replace(
-                _TRAKT_MARKER, encoded
-            )
-            self.home_window.setProperty(self._path_property(list_id), resolved)
+        write_resolved_widget_paths(encoded)
 
     def _focus_id(self):
         # Use the InfoLabel rather than xbmcgui.Window(...).getFocusId() —
@@ -119,6 +161,10 @@ class LiveSearchMonitor(threading.Thread):
                 self.home_window.clearProperty("altus.search.refreshing")
                 self._write_resting_paths(NOOP_URL)
                 self._pending = False
+                # Same query later should bump count again, not be deduped
+                # against this session's prior commit.
+                self._last_committed_term = None
+                self.home_window.clearProperty(COMMITTED_TERM_PROPERTY)
                 return
             self._pending = True
             activity = True
@@ -130,6 +176,24 @@ class LiveSearchMonitor(threading.Thread):
             # should let any pending refresh run.
             if self._pending and KEY_FOCUS_MIN <= focus_id <= KEY_FOCUS_MAX:
                 activity = True
+            # Focus entering one of our generated search-widget controls =
+            # user accepted the query. Commit current input to history
+            # (P8e). Dedup against the last committed term so re-entering
+            # the widgets with the same query is a no-op. Empty/whitespace
+            # input is filtered inside commit_live_search_history.
+            elif focus_id in self._widget_focus_ids:
+                term = (cur or "").strip()
+                if term:
+                    folded = term.casefold()
+                    # Dedup against both the in-process tracker (covers
+                    # repeated focus within this Kodi session) and the
+                    # cross-process sentinel (covers commits made by
+                    # search_input from a separate RunScript process).
+                    already = self.home_window.getProperty(COMMITTED_TERM_PROPERTY)
+                    if folded != (self._last_committed_term or "").casefold() and folded != already:
+                        self._last_committed_term = term
+                        self.home_window.setProperty(COMMITTED_TERM_PROPERTY, folded)
+                        threading.Thread(target=self._commit_history, daemon=True).start()
         if activity:
             self._last_change = time.monotonic()
             return
@@ -146,6 +210,15 @@ class LiveSearchMonitor(threading.Thread):
         threading.Thread(
             target=self._do_refresh, args=(settled_value,), daemon=True
         ).start()
+
+    def _commit_history(self):
+        """Off the polling thread so ~100 setProperty calls from
+        refresh_search_history don't stall the tick loop."""
+        try:
+            from modules.search_utils import SPaths
+            SPaths().commit_live_search_history()
+        except Exception:
+            pass
 
     def _do_refresh(self, search_term):
         """Publish the encoded properties and the per-widget resolved URLs.

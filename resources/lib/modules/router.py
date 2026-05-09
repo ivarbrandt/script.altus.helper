@@ -331,6 +331,11 @@ def routing():
 
         return SPaths().live_input()
 
+    if mode == "commit_search_history":
+        from modules.search_utils import SPaths
+
+        return SPaths().commit_live_search_history()
+
     if mode == "search_key":
         from modules.search_utils import SPaths
 

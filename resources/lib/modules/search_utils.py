@@ -86,11 +86,15 @@ class SPaths:
         On first sight: insert with search_count=1 and last_searched=now.
         On repeat: bump search_count and stamp last_searched=now in place.
         Returns the spath_id for the stored row.
+
+        Dedup is case-insensitive (COLLATE NOCASE) so 'Harry Potter' and
+        'harry potter' merge into one row. The originally stored capitalization
+        wins — repeats only bump count/last_searched, they don't rewrite spath.
         """
         self.refresh_spaths = True
         now = int(time.time())
         existing = self.dbcur.execute(
-            "SELECT spath_id, search_count FROM spath WHERE spath = ?",
+            "SELECT spath_id, search_count FROM spath WHERE spath = ? COLLATE NOCASE",
             (spath,),
         ).fetchone()
         if existing:
@@ -262,17 +266,47 @@ class SPaths:
             "altus.search.input.trakt.encoded", encoded_search_term
         )
         self._set_display(search_term, len(search_term))
+        # Confirmed-search path: skip the keystroke debounce. Resolve and
+        # publish widget paths now so SetFocus(2000) downstream (re_search)
+        # has loadable widget containers to land on.
+        from modules.monitors.live_search import (
+            COMMITTED_TERM_PROPERTY,
+            write_resolved_widget_paths,
+        )
+        write_resolved_widget_paths(encoded_search_term)
+        # Stamp the cross-process commit sentinel so LiveSearchMonitor's
+        # P8e widget-focus path doesn't double-bump search_count for this
+        # term. Cleared by the monitor when input goes empty.
+        self.home_window.setProperty(
+            COMMITTED_TERM_PROPERTY, search_term.casefold()
+        )
         if not from_history:
             xbmc.executebuiltin("SetFocus(2000)")
-        # Widget reload is dispatched by LiveSearchMonitor once the
-        # altus.search.input property settles (P8b debounce).
+
+    def commit_live_search_history(self):
+        """Commit the current live-search input to history (P8e).
+
+        Called from the search results window when the user focuses the
+        widget grouplist (control 2000) — the heuristic that the user has
+        accepted the query enough to interact with results. Empty/whitespace
+        input is a no-op (e.g. user clears, then idly focuses widgets).
+
+        Dedup is handled by add_spath_to_database (COLLATE NOCASE), so
+        repeated focus on the same query just bumps search_count and
+        last_searched without spamming new history rows.
+        """
+        search_term = self.home_window.getProperty("altus.search.input") or ""
+        if not search_term.strip():
+            return
+        self.add_spath_to_database(search_term)
+        self.refresh_search_history()
 
     def re_search(self):
         search_term = xbmc.getInfoLabel("ListItem.Label")
         self.search_input(search_term, True)
         xbmc.sleep(100)
         xbmc.executebuiltin("SetFocus(9000,0,absolute)")
-        xbmc.sleep(100)
+        xbmc.sleep(300)
         xbmc.executebuiltin("SetFocus(2000)")
 
     def _set_display(self, text, cursor):
