@@ -374,6 +374,34 @@ class SPaths:
             cursor = len(search_term)
         self._set_display(search_term, cursor)
 
+    def toggle_search_filter(self, kind):
+        """Toggle a kind in the live-mode filter pill panel (P8c).
+
+        Property format: ``all`` (or empty) means no filter; otherwise a
+        concatenation of ``@Kind1@@Kind2@`` tokens. ``@`` delimiter is used
+        (not ``[]``) because brackets inside ``String.Contains`` second-arg
+        get parsed by Kodi as grouping expressions, not literal characters,
+        and the contains check then never matches.
+
+        - First toggle from ``all``/empty: replace with ``@kind@``.
+        - Toggling an already-present kind: remove it; if nothing remains,
+          fall back to ``all`` so widgets become visible again.
+        - Toggling a new kind: append ``@kind@``.
+        """
+        if not kind:
+            return
+        cur = self.home_window.getProperty("altus.search.filter.kind") or ""
+        token = "@" + kind + "@"
+        if cur in ("all", ""):
+            new = token
+        elif token in cur:
+            new = cur.replace(token, "")
+            if not new:
+                new = "all"
+        else:
+            new = cur + token
+        self.home_window.setProperty("altus.search.filter.kind", new)
+
     def toggle_search_provider(self):
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")

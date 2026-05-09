@@ -341,6 +341,11 @@ def routing():
 
         return SPaths().open_search_window()
 
+    if mode == "toggle_search_filter":
+        from modules.search_utils import SPaths
+
+        return SPaths().toggle_search_filter(_get("kind", ""))
+
     if mode == "toggle_search_provider":
         from modules.search_utils import SPaths
 

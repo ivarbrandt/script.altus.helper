@@ -113,6 +113,19 @@ class ConfigManager:
     def is_empty(self):
         return self.get_widget_count() == 0
 
+    def get_distinct_visible_kinds(self):
+        """Distinct kinds across visible widgets, in widget-position order
+        (so the filter panel preserves the same flow as the results list)."""
+        rows = self.cur.execute(
+            "SELECT kind FROM search_widget WHERE visible=1 ORDER BY position"
+        ).fetchall()
+        seen = []
+        for r in rows:
+            k = r["kind"]
+            if k and k not in seen:
+                seen.append(k)
+        return seen
+
     # ----------------------------------------------------------------- writes
 
     def add_widget(self, label, kind, url_template, display_type, target,

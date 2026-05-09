@@ -37,6 +37,7 @@ search-specific init is needed.
 """
 
 import xml.sax.saxutils as saxutils
+from urllib.parse import quote
 
 import xbmc
 import xbmcgui
@@ -50,6 +51,13 @@ INCLUDE_NAME = "SearchWidgets"
 
 BASE_LIST_ID = 3010
 LIST_ID_STEP = 1   # 4-digit parents 3010..3099; stacked children "{parent}1" are 5-digit
+
+FILTER_GENERATED_PATH = "special://skin/xml/script-altus-search_kind_filter.xml"
+FILTER_INCLUDE_NAME = "SearchKindFilter"
+# Pill IDs: 9701 = "All", 9702..N = one per distinct kind in widget-position
+# order. Stays well clear of keyboard range (9201..9605) and the filter-panel
+# grouplist itself (9700) in Custom_1121_SearchResults.xml.
+FILTER_BASE_BUTTON_ID = 9701
 
 
 def _escape(value):
@@ -66,6 +74,24 @@ def _resolve_stacked_child_type(base_type):
     return base_type if base_type.endswith("Stacked") else base_type + "Stacked"
 
 
+def _filter_visible_clause(kind):
+    """Visibility clause for a widget given its kind. True when the filter is
+    'all' / empty (no filter active) OR contains this widget's @-delimited
+    kind token. Multi-select uses @Kind1@@Kind2@ concatenation. We can't use
+    [Kind] brackets here because brackets inside ``String.Contains`` get
+    parsed by Kodi as grouping expressions (not literal characters) and the
+    contains check then never matches. ``@`` has no special meaning in Kodi
+    conditions and avoids substring collisions ("Music" in "Music Videos").
+    Wired into the WidgetList* defs via the ``filter_visible`` param
+    (default 'true' so home widgets are unaffected)."""
+    return (
+        "String.IsEqual(Window(home).Property(altus.search.filter.kind),all) | "
+        "String.IsEmpty(Window(home).Property(altus.search.filter.kind)) | "
+        "String.Contains(Window(home).Property(altus.search.filter.kind),@%s@)"
+        % kind
+    )
+
+
 def _widget_block(widget, list_id):
     """Render one widget into one or two <include> blocks.
 
@@ -77,6 +103,7 @@ def _widget_block(widget, list_id):
     display_type = widget["display_type"]
     target = widget["target"]
     is_stacked = bool(widget.get("is_stacked"))
+    filter_clause = _escape(_filter_visible_clause(widget["kind"]))
 
     if not is_stacked:
         return (
@@ -85,6 +112,7 @@ def _widget_block(widget, list_id):
             f'      <param name="widget_header" value="{label}"/>\n'
             f'      <param name="widget_target" value="{target}"/>\n'
             f'      <param name="list_id" value="{list_id}"/>\n'
+            f'      <param name="filter_visible" value="{filter_clause}"/>\n'
             f'    </include>\n'
         )
 
@@ -97,6 +125,7 @@ def _widget_block(widget, list_id):
         f'      <param name="widget_target" value="{target}"/>\n'
         f'      <param name="list_id" value="{list_id}"/>\n'
         f'      <param name="child_id" value="{child_id}"/>\n'
+        f'      <param name="filter_visible" value="{filter_clause}"/>\n'
         f'    </include>\n'
     )
     if not child_type:
@@ -110,6 +139,7 @@ def _widget_block(widget, list_id):
         f'      <param name="widget_target" value="{target}"/>\n'
         f'      <param name="list_id" value="{child_id}"/>\n'
         f'      <param name="parent_id" value="{list_id}"/>\n'
+        f'      <param name="filter_visible" value="{filter_clause}"/>\n'
         f'    </include>\n'
     )
     return parent + child
@@ -134,6 +164,62 @@ def _build_xml(widgets):
     return "".join(parts)
 
 
+def _filter_button_block(label, button_id, onclick_action, selected_condition):
+    """Render one filter pill via the SearchKindFilterButton skin include.
+    Styling lives in the static include; this generator just wires per-pill
+    onclick + selected expressions."""
+    return (
+        f'    <include content="SearchKindFilterButton">\n'
+        f'      <param name="control_id" value="{button_id}"/>\n'
+        f'      <param name="label" value="{_escape(label)}"/>\n'
+        f'      <param name="onclick_action" value="{_escape(onclick_action)}"/>\n'
+        f'      <param name="selected_condition" value="{_escape(selected_condition)}"/>\n'
+        f'    </include>\n'
+    )
+
+
+def _all_pill():
+    """Special-case 'All' pill: clears the filter property to 'all' (sentinel
+    meaning no filter active). Selected when prop is 'all' or empty."""
+    onclick = "SetProperty(altus.search.filter.kind,all,home)"
+    selected = (
+        "String.IsEqual(Window(home).Property(altus.search.filter.kind),all) | "
+        "String.IsEmpty(Window(home).Property(altus.search.filter.kind))"
+    )
+    return _filter_button_block("All", FILTER_BASE_BUTTON_ID, onclick, selected)
+
+
+def _kind_pill(kind, button_id):
+    """Per-kind pill: toggles bracketed kind token in the filter property via
+    helper RunScript route. Selected when the bracketed token is present."""
+    onclick = (
+        "RunScript(script.altus.helper,mode=toggle_search_filter&kind=%s)"
+        % quote(kind, safe="")
+    )
+    selected = (
+        "String.Contains(Window(home).Property(altus.search.filter.kind),@%s@)"
+        % kind
+    )
+    return _filter_button_block(kind, button_id, onclick, selected)
+
+
+def _build_filter_xml(kinds):
+    """Compose the filter-panel include. Always emits an 'All' pill first,
+    followed by one pill per distinct kind in widget-position order. Multi-
+    select: kind pills toggle in/out of the property; All clears it."""
+    parts = [
+        '<?xml version="1.0" encoding="UTF-8"?>\n',
+        '<includes>\n',
+        f'  <include name="{FILTER_INCLUDE_NAME}">\n',
+        _all_pill(),
+    ]
+    for i, kind in enumerate(kinds, start=1):
+        parts.append(_kind_pill(kind, FILTER_BASE_BUTTON_ID + i))
+    parts.append('  </include>\n')
+    parts.append('</includes>\n')
+    return "".join(parts)
+
+
 def generate_and_reload(active_config=None, reload_skin=True):
     """Read DB → render XML → write to skin/xml/ → reload skin.
 
@@ -149,12 +235,18 @@ def generate_and_reload(active_config=None, reload_skin=True):
     """
     cm = ConfigManager()
     widgets = cm.get_all_widgets()
+    kinds = cm.get_distinct_visible_kinds()
     cm.close()
 
     xml = _build_xml(widgets)
     path = xbmcvfs.translatePath(GENERATED_PATH)
     with xbmcvfs.File(path, "w") as f:
         f.write(xml)
+
+    filter_xml = _build_filter_xml(kinds)
+    filter_path = xbmcvfs.translatePath(FILTER_GENERATED_PATH)
+    with xbmcvfs.File(filter_path, "w") as f:
+        f.write(filter_xml)
 
     if reload_skin:
         # Defer the actual reload until the user has left the addon-browser /
