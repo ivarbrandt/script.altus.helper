@@ -50,6 +50,37 @@ def routing():
 
         return open_channel_guide()
 
+    if mode == "refresh_search_history":
+        from modules.search_utils import SPaths
+
+        return SPaths().refresh_search_history()
+
+    if mode == "refresh_history_timestamps":
+        from modules.search_utils import SPaths
+
+        return SPaths().refresh_history_timestamps()
+
+    if mode == "generate_search_xml":
+        from modules.search_manager.xml_generator import generate_and_reload
+
+        return generate_and_reload()
+
+    if mode == "open_search_manager":
+        from modules.search_manager.manager_window import open_manager
+
+        return open_manager()
+
+    if mode == "initialize_search_config":
+        from modules.search_manager.default_config import ensure_search_config
+        from modules.search_manager.xml_generator import (
+            generate_and_reload as generate_search_and_reload,
+        )
+
+        seeded = ensure_search_config()
+        if seeded:
+            generate_search_and_reload()
+        return
+
     if "actions" in mode:
         from modules import actions
 
@@ -81,6 +112,15 @@ def routing():
     if mode == "migrate_and_generate":
         if not migrate():
             create_default_sections()
+        # Seed search config alongside widget config on first run, then run
+        # both generators so the home and search windows are ready.
+        from modules.search_manager.default_config import ensure_search_config
+        from modules.search_manager.xml_generator import (
+            generate_and_reload as generate_search_and_reload,
+        )
+        search_seeded = ensure_search_config()
+        if search_seeded:
+            generate_search_and_reload(reload_skin=False)
         return generate_and_reload()
 
     if mode == "create_default_sections":
@@ -276,11 +316,6 @@ def routing():
         cm.close()
         return _init_stacked_widgets(config)
 
-    if mode == "refresh_search_history":
-        from modules.search_utils import SPaths
-
-        return SPaths().refresh_search_history()
-
     if mode == "search_input":
         from modules.search_utils import SPaths
 
@@ -296,15 +331,30 @@ def routing():
 
         return SPaths().re_search()
 
+    if mode == "live_search_commit":
+        from modules.search_utils import SPaths
+
+        return SPaths().live_input()
+
+    if mode == "commit_search_history":
+        from modules.search_utils import SPaths
+
+        return SPaths().commit_live_search_history()
+
+    if mode == "search_key":
+        from modules.search_utils import SPaths
+
+        return SPaths().search_key(action=_get("action", ""), char=_get("char", ""))
+
     if mode == "open_search_window":
         from modules.search_utils import SPaths
 
         return SPaths().open_search_window()
 
-    if mode == "toggle_search_provider":
+    if mode == "toggle_search_filter":
         from modules.search_utils import SPaths
 
-        return SPaths().toggle_search_provider()
+        return SPaths().toggle_search_filter(_get("kind", ""))
 
     if mode == "set_api_key":
         from modules.custom_actions import set_api_key
