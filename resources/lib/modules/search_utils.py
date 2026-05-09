@@ -472,29 +472,6 @@ class SPaths:
             new = cur + token
         self.home_window.setProperty("altus.search.filter.kind", new)
 
-    def toggle_search_provider(self):
-        self.home_window.clearProperty("altus.search.input")
-        self.home_window.clearProperty("altus.search.input.encoded")
-        self.home_window.clearProperty("altus.search.input.trakt.encoded")
-        self.home_window.clearProperty("altus.search.input.display")
-        self.home_window.clearProperty("altus.search.input.before")
-        self.home_window.clearProperty("altus.search.input.after")
-        self.home_window.clearProperty("altus.search.cursor")
-        current_provider = xbmc.getInfoLabel("Skin.String(current_search_provider)")
-        if current_provider == "0":
-            next_provider = "1"
-        elif current_provider == "1":
-            next_provider = "3"
-        elif current_provider == "3":
-            next_provider = "2"
-        elif current_provider == "2":
-            next_provider = "4"
-        elif current_provider == "4":
-            next_provider = "0"
-        else:
-            next_provider = "1"
-        xbmc.executebuiltin(f"Skin.SetString(current_search_provider,{next_provider})")
-
 
 # class SPaths:
 #     def __init__(self, spaths=None):
