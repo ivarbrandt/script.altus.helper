@@ -840,8 +840,11 @@ def starting_search_widgets():
     encoded_term = home.getProperty("altus.search.input.encoded")
     if not encoded_term:
         return
-    search_window = xbmcgui.Window(11121)
-    search_window.setProperty("altus.search.widgets", "finished")
+    # Child path/label live on Window(home) under altus.search.child.* —
+    # see search_manager/xml_generator comment for the cross-thread crash
+    # that drove this off Window(11121), and for why the prefix is
+    # distinct from home widgets' altus.<id>.* (numeric range collision).
+    home.setProperty("altus.search.widgets", "finished")
     for list_id, widget in iter_visible_widgets_with_ids():
         if not widget.get("is_stacked"):
             continue
@@ -854,11 +857,11 @@ def starting_search_widgets():
             if not items:
                 continue
             first_item = items[0]
-            search_window.setProperty(
-                "altus.%s.label" % list_id, first_item["label"]
+            home.setProperty(
+                "altus.search.child.%s.label" % list_id, first_item["label"]
             )
-            search_window.setProperty(
-                "altus.%s.path" % list_id, first_item["file"]
+            home.setProperty(
+                "altus.search.child.%s.path" % list_id, first_item["file"]
             )
         except Exception:
             continue

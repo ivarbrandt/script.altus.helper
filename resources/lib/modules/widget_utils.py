@@ -81,8 +81,22 @@ def widget_monitor(list_id):
                     pass
         home_window.clearProperty("altus.countdown_active")
         if switch_widget:
-            window.setProperty(label_prop, xbmc.getInfoLabel("ListItem.Label"))
-            window.setProperty(path_prop, cpath_path)
+            new_label = xbmc.getInfoLabel("ListItem.Label")
+            if window_id == 11121:
+                # Search-side: route stacked-child path/label to Window(home)
+                # under a distinct prefix (altus.search.child.<id>.*) to
+                # avoid the Window(11121) cross-thread crash and to avoid
+                # colliding with home widget IDs that share the same numeric
+                # range under the plain altus.<id>.* prefix.
+                home_window.setProperty(
+                    "altus.search.child.%s.label" % list_id, new_label
+                )
+                home_window.setProperty(
+                    "altus.search.child.%s.path" % list_id, cpath_path
+                )
+            else:
+                window.setProperty(label_prop, new_label)
+                window.setProperty(path_prop, cpath_path)
             start_wait = 0
             while not xbmc.getCondVisibility(is_updating_cond) and start_wait < 1:
                 monitor.waitForAbort(0.05)

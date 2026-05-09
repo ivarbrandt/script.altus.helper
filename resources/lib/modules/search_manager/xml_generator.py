@@ -174,8 +174,20 @@ def _widget_block(widget, list_id):
     )
     if not child_type:
         return parent
-    child_path = _escape(f"$INFO[Window(1121).Property(altus.{list_id}.path)]")
-    child_label = _escape(f"$INFO[Window(1121).Property(altus.{list_id}.label)]")
+    # Stacked child properties live on Window(home) under a search-specific
+    # prefix. Originally these were on Window(1121), but writing to that
+    # window from the LiveSearchMonitor daemon thread while 1121 was
+    # visible (and a container had the property bound to its content_path
+    # via $INFO) raced with the GUI thread and crashed Kodi. Home is
+    # thread-safe. The altus.search.child.<id>.* prefix keeps search keys
+    # separate from home stacked-widget keys (altus.<id>.*) which share
+    # the same numeric list_id range under widget_manager's allocation.
+    child_path = _escape(
+        f"$INFO[Window(home).Property(altus.search.child.{list_id}.path)]"
+    )
+    child_label = _escape(
+        f"$INFO[Window(home).Property(altus.search.child.{list_id}.label)]"
+    )
     child = (
         f'    <include content="{child_type}">\n'
         f'      <param name="content_path" value="{child_path}"/>\n'
