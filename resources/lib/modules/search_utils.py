@@ -5,8 +5,6 @@ import xbmc, xbmcgui, xbmcvfs
 import sqlite3 as database
 from modules import xmls
 from urllib.parse import quote
-from threading import Thread, Event
-from modules.cpath_maker import starting_search_widgets
 
 # from modules.logger import logger
 
@@ -234,10 +232,10 @@ class SPaths:
                 "altus.search.history.empty",
                 "Your search history is empty. Click the search icon to perform a new search.",
             )
-            xbmc.executebuiltin("SetFocus(9101)")
+            xbmc.executebuiltin("SetFocus(801)")
         else:
             self.home_window.clearProperty("altus.search.history.empty")
-            xbmc.executebuiltin("SetFocus(9101)")
+            xbmc.executebuiltin("SetFocus(801)")
 
     def search_input(self, search_term=None, from_history=False):
         if search_term is None or not search_term.strip():
@@ -264,17 +262,10 @@ class SPaths:
             "altus.search.input.trakt.encoded", encoded_search_term
         )
         self._set_display(search_term, len(search_term))
-        xbmc.sleep(200)
         if not from_history:
             xbmc.executebuiltin("SetFocus(2000)")
-        xbmc.sleep(100)
-
-        def load_widgets_and_clear_flag():
-            starting_search_widgets()
-            xbmc.sleep(800)
-            self.home_window.clearProperty("altus.search.refreshing")
-
-        Thread(target=load_widgets_and_clear_flag).start()
+        # Widget reload is dispatched by LiveSearchMonitor once the
+        # altus.search.input property settles (P8b debounce).
 
     def re_search(self):
         search_term = xbmc.getInfoLabel("ListItem.Label")
@@ -350,7 +341,10 @@ class SPaths:
     def live_input(self, search_term=None, cursor=None):
         """Push the live input to the search properties without inserting into
         history. Empty/whitespace clears all search-input properties so widgets
-        unmount cleanly.
+        unmount cleanly. Returns immediately — LiveSearchMonitor (P8b) watches
+        ``altus.search.input`` and dispatches the widget reload once the value
+        settles for ~500ms, so this is safe to call per-keystroke from the
+        QWERTY keyboard.
 
         ``cursor`` defaults to end-of-string (used by external callers like
         history replay); search_key passes its computed cursor explicitly.
@@ -365,22 +359,20 @@ class SPaths:
             self.home_window.clearProperty("altus.search.input.display")
             self.home_window.clearProperty("altus.search.cursor")
             return
-        self.home_window.setProperty("altus.search.refreshing", "true")
-        encoded = quote(search_term)
+        # NOTE: do NOT write altus.search.input.encoded / .trakt.encoded here.
+        # Generated search widgets embed $INFO[...input.encoded] in their
+        # <content> path; Kodi auto-refetches whenever that property changes,
+        # so writing it per-keystroke bypasses the debounce. LiveSearchMonitor
+        # writes the encoded properties once the input settles.
+        #
+        # Also do NOT toggle altus.search.refreshing here. Widget visibility
+        # in Widgets_*.xml keys on it; flipping it per-keystroke causes
+        # hidden widgets to remount and re-resolve their <content> paths
+        # immediately. The monitor sets/clears it around the actual fire.
         self.home_window.setProperty("altus.search.input", search_term)
-        self.home_window.setProperty("altus.search.input.encoded", encoded)
-        self.home_window.setProperty("altus.search.input.trakt.encoded", encoded)
         if cursor is None:
             cursor = len(search_term)
         self._set_display(search_term, cursor)
-        xbmc.sleep(200)
-
-        def load_widgets_and_clear_flag():
-            starting_search_widgets()
-            xbmc.sleep(800)
-            self.home_window.clearProperty("altus.search.refreshing")
-
-        Thread(target=load_widgets_and_clear_flag).start()
 
     def toggle_search_provider(self):
         self.home_window.clearProperty("altus.search.input")

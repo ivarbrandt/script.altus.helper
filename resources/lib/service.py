@@ -6,6 +6,7 @@ from threading import Thread
 from modules.logger import logger
 from modules.monitors.ratings import RatingsMonitor
 from modules.monitors.image import ImageMonitor, ImageColorAnalyzer, ImageAnalysisConfig
+from modules.monitors.live_search import LiveSearchMonitor
 from modules.databases.ratings import RatingsDatabase
 from modules.config import SETTINGS_PATH
 from modules.select_view import VIEW_PREFERENCES_PATH
@@ -28,6 +29,7 @@ class Service(xbmc.Monitor):
         current_config = ImageAnalysisConfig.from_skin_settings()
         self.image_monitor = ImageMonitor(ImageColorAnalyzer, current_config)
         self.ratings_monitor = RatingsMonitor(RatingsDatabase(), self.home_window)
+        self.live_search_monitor = LiveSearchMonitor()
         self._last_addon_key = None
         self._last_content_type = None
         self._view_prefs_cache = {}
@@ -37,6 +39,7 @@ class Service(xbmc.Monitor):
     def run(self):
         """Start the service and monitor."""
         self.image_monitor.start()
+        self.live_search_monitor.start()
         self._was_on_home = False
         while not self.abortRequested():
             on_home = (
