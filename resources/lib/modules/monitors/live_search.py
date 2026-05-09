@@ -69,6 +69,10 @@ class LiveSearchMonitor(threading.Thread):
         super().__init__()
         self.daemon = True
         self.home_window = xbmcgui.Window(10000)
+        # Stacked child path/label properties live on the search window's
+        # namespace (Window(1121) in InfoLabels resolves to the runtime-
+        # shifted id 11121). The parent's path lives on Window(home).
+        self.search_window = xbmcgui.Window(SEARCH_WINDOW_ID)
         self._monitor = xbmc.Monitor()
         self._last_seen = self.home_window.getProperty("altus.search.input")
         self._last_focus_id = 0
@@ -103,7 +107,7 @@ class LiveSearchMonitor(threading.Thread):
             cache = []
             focus_ids = set()
             for list_id, w in iter_visible_widgets_with_ids():
-                cache.append((list_id, w["url_template"]))
+                cache.append((list_id, w["url_template"], bool(w.get("is_stacked"))))
                 focus_ids.add(list_id)
                 # Stacked child id matches xml_generator's "{parent}1" rule.
                 # Adding it unconditionally is harmless — non-stacked widgets
@@ -119,8 +123,20 @@ class LiveSearchMonitor(threading.Thread):
         return "altus.search.widget.%s.path" % list_id
 
     def _write_resting_paths(self, value):
-        for list_id, _ in self._widget_cache:
+        # Parent path lives on Window(home); stacked children read their
+        # own path/label from Window(SEARCH_WINDOW_ID). Both must move in
+        # lockstep — flushing only the parent leaves a stacked child
+        # rendering the prior session's artwork/label until the user
+        # navigates the parent again. NOOP_URL forces an empty refetch on
+        # the child container; the label is cleared so it doesn't show
+        # the stale category text alongside an empty list.
+        for list_id, _url, is_stacked in self._widget_cache:
             self.home_window.setProperty(self._path_property(list_id), value)
+            if is_stacked:
+                self.search_window.setProperty(
+                    "altus.%s.path" % list_id, value
+                )
+                self.search_window.clearProperty("altus.%s.label" % list_id)
 
     def _write_resolved_paths(self, encoded):
         write_resolved_widget_paths(encoded)
