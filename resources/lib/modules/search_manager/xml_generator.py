@@ -52,6 +52,41 @@ INCLUDE_NAME = "SearchWidgets"
 BASE_LIST_ID = 3010
 LIST_ID_STEP = 1   # 4-digit parents 3010..3099; stacked children "{parent}1" are 5-digit
 
+# Resting-state values for ``altus.search.widget.<list_id>.path``.
+# INITIAL_PATH (empty string) is used at service startup — Kodi treats it as
+# "no source", so containers stay dormant with zero IsUpdating flash on first
+# reveal of window 1121. NOOP_URL is used on mid-session input clear: a real
+# (but empty) plugin fetch is required to flush stale items from a container
+# that already loaded results; an empty string at that point is a no-op and
+# the stale items remain.
+INITIAL_PATH = ""
+NOOP_URL = "plugin://script.altus.helper/?mode=noop_empty"
+
+
+def widget_path_property(list_id):
+    """Window(home) property name that drives a parent widget's content_path.
+    live_search.py writes either NOOP_URL (resting state) or the resolved
+    plugin URL (after debounced fire) to this property."""
+    return "altus.search.widget.%s.path" % list_id
+
+
+def iter_visible_widgets_with_ids():
+    """Yield (list_id, widget_row) for every visible widget, in the same order
+    and with the same id allocation that ``_build_xml`` uses. Single source of
+    truth for the parent list_id mapping; consumed by both xml_generator (for
+    XML emit) and live_search.py (for path-property writes)."""
+    cm = ConfigManager()
+    try:
+        widgets = cm.get_all_widgets()
+    finally:
+        cm.close()
+    list_id = BASE_LIST_ID
+    for w in widgets:
+        if not w.get("visible"):
+            continue
+        yield list_id, w
+        list_id += LIST_ID_STEP
+
 FILTER_GENERATED_PATH = "special://skin/xml/script-altus-search_kind_filter.xml"
 FILTER_INCLUDE_NAME = "SearchKindFilter"
 # Pill IDs: 9701 = "All", 9702..N = one per distinct kind in widget-position
@@ -97,8 +132,17 @@ def _widget_block(widget, list_id):
 
     Non-stacked: a single parent include.
     Stacked: parent include + linked child include.
+
+    Parent ``content_path`` resolves through a Window(home) property
+    (``altus.search.widget.{list_id}.path``) so live_search.py can swap the
+    container between a noop URL (resting / cleared state) and the real
+    resolved plugin URL (active query). This drives the container directly
+    to NumItems=0 on clear, eliminating the stale-flash on re-typing that
+    pure visibility gating couldn't fix.
     """
-    url = _escape(widget["url_template"])
+    parent_path = _escape(
+        "$INFO[Window(home).Property(%s)]" % widget_path_property(list_id)
+    )
     label = _escape(widget["label"])
     display_type = widget["display_type"]
     target = widget["target"]
@@ -108,7 +152,7 @@ def _widget_block(widget, list_id):
     if not is_stacked:
         return (
             f'    <include content="{display_type}">\n'
-            f'      <param name="content_path" value="{url}"/>\n'
+            f'      <param name="content_path" value="{parent_path}"/>\n'
             f'      <param name="widget_header" value="{label}"/>\n'
             f'      <param name="widget_target" value="{target}"/>\n'
             f'      <param name="list_id" value="{list_id}"/>\n'
@@ -120,7 +164,7 @@ def _widget_block(widget, list_id):
     child_type = _resolve_stacked_child_type(widget.get("stacked_type"))
     parent = (
         f'    <include content="{display_type}">\n'
-        f'      <param name="content_path" value="{url}"/>\n'
+        f'      <param name="content_path" value="{parent_path}"/>\n'
         f'      <param name="widget_header" value="{label}"/>\n'
         f'      <param name="widget_target" value="{target}"/>\n'
         f'      <param name="list_id" value="{list_id}"/>\n'
@@ -145,7 +189,7 @@ def _widget_block(widget, list_id):
     return parent + child
 
 
-def _build_xml(widgets):
+def _build_xml():
     """Compose the full XML document. Hidden widgets are skipped here so the
     generated file never carries dead weight."""
     parts = [
@@ -153,12 +197,8 @@ def _build_xml(widgets):
         '<includes>\n',
         f'  <include name="{INCLUDE_NAME}">\n',
     ]
-    list_id = BASE_LIST_ID
-    for w in widgets:
-        if not w.get("visible"):
-            continue
+    for list_id, w in iter_visible_widgets_with_ids():
         parts.append(_widget_block(w, list_id))
-        list_id += LIST_ID_STEP
     parts.append('  </include>\n')
     parts.append('</includes>\n')
     return "".join(parts)
@@ -238,7 +278,7 @@ def generate_and_reload(active_config=None, reload_skin=True):
     kinds = cm.get_distinct_visible_kinds()
     cm.close()
 
-    xml = _build_xml(widgets)
+    xml = _build_xml()
     path = xbmcvfs.translatePath(GENERATED_PATH)
     with xbmcvfs.File(path, "w") as f:
         f.write(xml)

@@ -16,6 +16,12 @@ KEY_FOCUS_MIN = 9200
 KEY_FOCUS_MAX = 9605
 SEARCH_WINDOW_ID = 11121  # 1121 declared, runtime-shifted (see custom-window-id memory)
 
+# $INFO markers that may appear inside a widget's url_template. Replaced
+# with the URL-encoded query value before the resolved URL is written to
+# the widget's path property.
+_ENCODED_MARKER = "$INFO[Window(home).Property(altus.search.input.encoded)]"
+_TRAKT_MARKER = "$INFO[Window(home).Property(altus.search.input.trakt.encoded)]"
+
 
 class LiveSearchMonitor(threading.Thread):
     """Debounces live-search widget refreshes.
@@ -24,8 +30,12 @@ class LiveSearchMonitor(threading.Thread):
     unchanged for DEBOUNCE_MS, fires starting_search_widgets() once in a
     sub-thread so the poll loop keeps draining keystrokes.
 
-    Per-keystroke writers (live_input, search_input) only set properties;
-    this monitor is the single dispatcher for the actual widget reload.
+    Also owns the per-widget content_path properties:
+    ``altus.search.widget.<list_id>.path``. Generator-emitted parent widgets
+    read these via $INFO. We write the noop URL at startup and on input
+    clear (resting state → NumItems=0), and the resolved plugin URL on each
+    debounced fire (active query). This drives container state directly
+    instead of relying on plugin empty-query behavior.
     """
 
     def __init__(self):
@@ -39,6 +49,39 @@ class LiveSearchMonitor(threading.Thread):
         self._pending = False
         self._refresh_lock = threading.Lock()
         self._refreshing = False
+        self._widget_cache = self._load_widget_cache()
+        from modules.search_manager.xml_generator import INITIAL_PATH
+        self._write_resting_paths(INITIAL_PATH)
+
+    def _load_widget_cache(self):
+        """Snapshot of (list_id, url_template) for every visible search
+        widget, in the same order/id-allocation that xml_generator uses.
+        Cached at service start; ReloadSkin() after a manager save restarts
+        this service, so the cache stays in sync without per-fire DB reads."""
+        try:
+            from modules.search_manager.xml_generator import (
+                iter_visible_widgets_with_ids,
+            )
+            return [
+                (list_id, w["url_template"])
+                for list_id, w in iter_visible_widgets_with_ids()
+            ]
+        except Exception:
+            return []
+
+    def _path_property(self, list_id):
+        return "altus.search.widget.%s.path" % list_id
+
+    def _write_resting_paths(self, value):
+        for list_id, _ in self._widget_cache:
+            self.home_window.setProperty(self._path_property(list_id), value)
+
+    def _write_resolved_paths(self, encoded):
+        for list_id, template in self._widget_cache:
+            resolved = template.replace(_ENCODED_MARKER, encoded).replace(
+                _TRAKT_MARKER, encoded
+            )
+            self.home_window.setProperty(self._path_property(list_id), resolved)
 
     def _focus_id(self):
         # Use the InfoLabel rather than xbmcgui.Window(...).getFocusId() —
@@ -65,6 +108,18 @@ class LiveSearchMonitor(threading.Thread):
         cur = self.home_window.getProperty("altus.search.input")
         if cur != self._last_seen:
             self._last_seen = cur
+            # Input going empty fires the clear path immediately — debouncing
+            # this would let the user scroll around with stale widgets visible
+            # until they stopped interacting. The clear is cheap (a few
+            # property writes), no plugin fetch fans out from the main thread.
+            if not cur:
+                from modules.search_manager.xml_generator import NOOP_URL
+                self.home_window.clearProperty("altus.search.input.encoded")
+                self.home_window.clearProperty("altus.search.input.trakt.encoded")
+                self.home_window.clearProperty("altus.search.refreshing")
+                self._write_resting_paths(NOOP_URL)
+                self._pending = False
+                return
             self._pending = True
             activity = True
         focus_id = self._focus_id()
@@ -86,11 +141,6 @@ class LiveSearchMonitor(threading.Thread):
             if (time.monotonic() - self._last_change) * 1000 < DEBOUNCE_MS:
                 return
             self._pending = False
-            if not cur:
-                self.home_window.clearProperty("altus.search.input.encoded")
-                self.home_window.clearProperty("altus.search.input.trakt.encoded")
-                self.home_window.clearProperty("altus.search.refreshing")
-                return
             self._refreshing = True
             settled_value = cur
         threading.Thread(
@@ -98,9 +148,10 @@ class LiveSearchMonitor(threading.Thread):
         ).start()
 
     def _do_refresh(self, search_term):
-        """Publish the encoded properties (which trigger Kodi's auto-refetch
-        of widgets whose <content> embeds $INFO[...input.encoded]) and kick
-        the legacy stacked-Trakt widgets, then clear the in-progress flag."""
+        """Publish the encoded properties and the per-widget resolved URLs.
+        Containers bound to ``altus.search.widget.<id>.path`` via $INFO
+        refetch automatically when the property changes. Then kick the
+        legacy stacked-Trakt widgets and clear the in-progress flag."""
         from modules.cpath_maker import starting_search_widgets
 
         try:
@@ -108,6 +159,7 @@ class LiveSearchMonitor(threading.Thread):
             self.home_window.setProperty("altus.search.refreshing", "true")
             self.home_window.setProperty("altus.search.input.encoded", encoded)
             self.home_window.setProperty("altus.search.input.trakt.encoded", encoded)
+            self._write_resolved_paths(encoded)
             starting_search_widgets()
             xbmc.sleep(COOLDOWN_MS)
             self.home_window.clearProperty("altus.search.refreshing")

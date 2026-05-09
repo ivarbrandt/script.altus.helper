@@ -17,6 +17,9 @@ def main():
         from modules.library_search import library_search
         return library_search(handle, params)
 
+    if mode == "noop_empty":
+        return xbmcplugin.endOfDirectory(handle, succeeded=True)
+
     xbmcplugin.endOfDirectory(handle, succeeded=False)
 
 
