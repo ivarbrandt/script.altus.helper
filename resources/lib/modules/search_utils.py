@@ -30,8 +30,10 @@ def _humanize_timestamp(ts):
     if not ts:
         return ""
     diff = int(time.time()) - int(ts)
-    if diff < 60:
+    if diff < 1:
         return "just now"
+    if diff < 60:
+        return "%d second%s ago" % (diff, "" if diff == 1 else "s")
     if diff < 3600:
         n = diff // 60
         return "%d minute%s ago" % (n, "" if n == 1 else "s")
@@ -191,6 +193,7 @@ class SPaths:
             self.home_window.clearProperty(f"altus.search.history.{i}.id")
             self.home_window.clearProperty(f"altus.search.history.{i}.count")
             self.home_window.clearProperty(f"altus.search.history.{i}.last")
+        most_recent_ts = 0
         for i, row in enumerate(history[: self.max_history_items], 1):
             spath_id, term, search_count, last_searched = row
             self.home_window.setProperty(f"altus.search.history.{i}", term)
@@ -202,6 +205,11 @@ class SPaths:
                 f"altus.search.history.{i}.last",
                 _humanize_timestamp(last_searched),
             )
+            if last_searched and int(last_searched) > most_recent_ts:
+                most_recent_ts = int(last_searched)
+        self.home_window.setProperty(
+            "altus.search.history.most_recent_ts", str(most_recent_ts)
+        )
         count = min(len(history), self.max_history_items)
         self.home_window.setProperty("altus.search.history.count", str(count))
         if count == 0:
@@ -211,6 +219,34 @@ class SPaths:
             )
         else:
             self.home_window.clearProperty("altus.search.history.empty")
+
+    def refresh_history_timestamps(self):
+        """Update only the .last (humanized timestamp) properties.
+
+        The full refresh_search_history() clears every history.{i} property
+        before re-setting them. List 9000's items use
+        ``<visible>!String.IsEmpty(...history.{i})</visible>``, so during the
+        clear pass every item briefly becomes invisible — Kodi can't hold
+        focus on an invisible item, so a 60s tick fired while the user is
+        on 9000 yanks focus and the only recovery is reopening the window.
+
+        This method only writes ``.last`` for the rows that already exist,
+        never touching the term/id/count properties or the visible-keyed
+        history.{i}, so focus on 9000 is preserved.
+        """
+        history = self.fetch_all_spaths()
+        most_recent_ts = 0
+        for i, row in enumerate(history[: self.max_history_items], 1):
+            _spath_id, _term, _search_count, last_searched = row
+            self.home_window.setProperty(
+                f"altus.search.history.{i}.last",
+                _humanize_timestamp(last_searched),
+            )
+            if last_searched and int(last_searched) > most_recent_ts:
+                most_recent_ts = int(last_searched)
+        self.home_window.setProperty(
+            "altus.search.history.most_recent_ts", str(most_recent_ts)
+        )
 
     # update_search_history_properties was an in-place property shifter that
     # mirrored the old delete+re-add flow. With the upsert + sort-by-timestamp

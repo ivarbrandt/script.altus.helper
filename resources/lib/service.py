@@ -35,6 +35,7 @@ class Service(xbmc.Monitor):
         self._view_prefs_cache = {}
         self._view_prefs_mtime = 0
         self._last_history_refresh = 0.0
+        self._history_was_sub_minute = False
 
     def run(self):
         """Start the service and monitor."""
@@ -158,18 +159,39 @@ class Service(xbmc.Monitor):
                 xbmc.executebuiltin(f'Container.SetViewMode({saved_view["viewid"]})')
 
     def _check_search_history_refresh(self):
-        """Re-humanize search-history .last labels on a 60-second cadence.
+        """Re-humanize search-history .last labels.
 
-        The humanized timestamp ("3 minutes ago") is computed once at write
-        time and goes stale immediately. Refresh while a search-relevant
-        window is visible so users see live values.
+        Default cadence is 60s. While the most recently committed entry is
+        under a minute old, switches to 1s so the seconds counter advances
+        live ("5 seconds ago" → "6 seconds ago"). Reverts to 60s once that
+        entry crosses the minute mark.
+
+        The humanized timestamp is computed once at write time and goes
+        stale immediately. Refresh while a search-relevant window is
+        visible so users see live values.
         """
         now = time.monotonic()
-        if now - self._last_history_refresh < 60:
+        most_recent_str = self.home_window.getProperty(
+            "altus.search.history.most_recent_ts"
+        )
+        try:
+            most_recent_ts = int(most_recent_str) if most_recent_str else 0
+        except ValueError:
+            most_recent_ts = 0
+        sub_minute = bool(
+            most_recent_ts and (int(time.time()) - most_recent_ts) < 60
+        )
+        # Transition from sub-minute → >=minute needs an immediate refresh so
+        # "59 seconds ago" flips to "1 minute ago" without waiting a full 60s
+        # for the slow-cadence timer to come around.
+        just_crossed_minute = self._history_was_sub_minute and not sub_minute
+        self._history_was_sub_minute = sub_minute
+        interval = 1 if sub_minute else 60
+        if not just_crossed_minute and now - self._last_history_refresh < interval:
             return
         if xbmc.getSkinDir() != "skin.altus":
             return
-        if not self.get_visibility("Window.IsVisible(Home) | Window.IsVisible(1121)"):
+        if not self.get_visibility("Window.IsVisible(1121)"):
             return
         count_str = self.home_window.getProperty("altus.search.history.count")
         try:
@@ -181,7 +203,7 @@ class Service(xbmc.Monitor):
             return
         from modules.search_utils import SPaths
 
-        SPaths().refresh_search_history()
+        SPaths().refresh_history_timestamps()
 
     def _should_pause(self):
         if self.home_window.getProperty("pause_services") == "true":

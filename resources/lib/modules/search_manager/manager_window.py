@@ -116,6 +116,45 @@ Q_TRAKT = "$INFO[Window(home).Property(altus.search.input.trakt.encoded)]"
 
 HIDDEN_COLOR = "60FFFFFF"
 
+
+def _addon_status(addon_id):
+    """Return ('ok'|'missing'|'disabled', friendly_name_or_None) for an addon.
+
+    'ok'        — installed AND enabled (or addon_id is empty / library widget).
+    'missing'   — not installed at all (no friendly name available).
+    'disabled'  — installed but disabled (friendly name resolved via JSON-RPC,
+                  falls back to the bare id if the lookup fails). Used to gate
+                  widget visibility: widgets whose source addon is disabled or
+                  missing get auto-hidden on manager open and can't be re-shown
+                  until the addon is re-enabled.
+    """
+    if not addon_id:
+        return ("ok", None)
+    if not xbmc.getCondVisibility("System.HasAddon(%s)" % addon_id):
+        return ("missing", None)
+    if not xbmc.getCondVisibility("System.AddonIsEnabled(%s)" % addon_id):
+        try:
+            detail = json.loads(
+                xbmc.executeJSONRPC(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "method": "Addons.GetAddonDetails",
+                            "params": {
+                                "addonid": addon_id,
+                                "properties": ["name"],
+                            },
+                            "id": 1,
+                        }
+                    )
+                )
+            )
+            name = detail["result"]["addon"]["name"] or addon_id
+        except (KeyError, ValueError):
+            name = addon_id
+        return ("disabled", name)
+    return ("ok", None)
+
 # Friendly ↔ internal display-type mapping. Search widgets only use the
 # subset that makes sense for poster / landscape / square content.
 DISPLAY_TYPE_MAP = {
@@ -323,6 +362,7 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
     def onInit(self):
         self.cm = ConfigManager()
         self.list = self.getControl(LIST_ID)
+        self._auto_hide_unavailable_widgets()
         self._populate_list()
         self.monitor = _ServiceMonitor(self)
         self.monitor.start()
@@ -332,6 +372,31 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
             self._set_btn(WIDGET_BTN_DEFAULT)
         else:
             self.setFocusId(ADD_EMPTY_BTN)
+
+    def _auto_hide_unavailable_widgets(self):
+        """Hide widgets whose source addon is missing or disabled.
+
+        Runs on manager open. Any visible widget pointing at an addon that
+        isn't installed or is disabled gets visible=0 in the DB, marks the
+        dialog dirty so close → generate_and_reload regenerates the search
+        XML without the dead widgets, and shows a one-shot notification with
+        the count. Re-showing the widget is gated by _toggle_visibility, so
+        the user can't undo this until the addon is back.
+        """
+        hidden = 0
+        for w in self.cm.get_all_widgets():
+            if not w.get("visible"):
+                continue
+            addon_id = w.get("source_addon_id")
+            if not addon_id:
+                continue
+            status, _ = _addon_status(addon_id)
+            if status == "ok":
+                continue
+            self.cm.set_visible(w["id"], 0)
+            hidden += 1
+        if hidden:
+            self.changed = True
 
     def _on_close(self):
         """Pre-close cleanup. Runs while the dialog is still on screen.
@@ -580,8 +645,10 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
         """Catalog dialog: kind → source. Returns new widget id or None."""
         from modules.search_manager.catalog import CATALOG
 
-        # Filter by installed-addon availability. None source (library) is
-        # always available.
+        # Filter by addon availability — installed AND enabled. None source
+        # (library) is always available. Adding a preset for a disabled addon
+        # would just get auto-hidden on the next manager open, so exclude it
+        # up front.
         avail = []
         seen_addon = {}
         for e in CATALOG:
@@ -591,7 +658,7 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
                 continue
             ok = seen_addon.get(aid)
             if ok is None:
-                ok = bool(xbmc.getCondVisibility("System.HasAddon(%s)" % aid))
+                ok = _addon_status(aid)[0] == "ok"
                 seen_addon[aid] = ok
             if ok:
                 avail.append(e)
@@ -849,6 +916,31 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
         wid = self._selected_widget_id()
         if wid is None:
             return
+        widget = self.cm.get_widget(wid)
+        if widget is None:
+            return
+        # Block hidden→visible when the source addon isn't usable. Without
+        # this gate the user could re-show a widget whose plugin URL would
+        # fail at search time, which is the exact failure mode auto-hide is
+        # designed to prevent. Hide direction (visible→hidden) is always
+        # allowed.
+        if not widget.get("visible"):
+            status, friendly = _addon_status(widget.get("source_addon_id"))
+            if status != "ok":
+                if status == "disabled":
+                    msg = (
+                        "Enable [B]%s[/B] before showing this widget."
+                        % (friendly or widget.get("source_addon_id"))
+                    )
+                else:
+                    msg = (
+                        "Install [B]%s[/B] before showing this widget."
+                        % widget.get("source_addon_id")
+                    )
+                xbmcgui.Dialog().notification(
+                    "Search Manager", msg, xbmcgui.NOTIFICATION_WARNING, 4000
+                )
+                return
         new_val = self.cm.toggle_visible(wid)
         if new_val is None:
             return
@@ -1030,44 +1122,21 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
             return
 
         # Gate on addon availability so we don't hand the user an opaque
-        # JSON-RPC error. HasAddon = installed; AddonIsEnabled = enabled —
-        # check both so the message points at the right fix.
+        # JSON-RPC error.
         source_addon_id = widget.get("source_addon_id")
-        if source_addon_id:
-            if not xbmc.getCondVisibility("System.HasAddon(%s)" % source_addon_id):
-                # Not installed → can't read addon.xml, so fall back to the id.
-                xbmcgui.Dialog().ok(
-                    "Test This Path",
-                    "[B]%s[/B] is not installed." % source_addon_id,
-                )
-                return
-            if not xbmc.getCondVisibility(
-                "System.AddonIsEnabled(%s)" % source_addon_id
-            ):
-                # xbmcaddon.Addon(id) raises for disabled addons. Use
-                # Addons.GetAddonDetails JSON-RPC, which reports regardless of
-                # enabled state.
-                detail_req = json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "method": "Addons.GetAddonDetails",
-                        "params": {
-                            "addonid": source_addon_id,
-                            "properties": ["name"],
-                        },
-                        "id": 1,
-                    }
-                )
-                try:
-                    detail = json.loads(xbmc.executeJSONRPC(detail_req))
-                    name = detail["result"]["addon"]["name"]
-                except (KeyError, ValueError):
-                    name = source_addon_id
-                xbmcgui.Dialog().ok(
-                    "Test This Path",
-                    "[B]%s[/B] is disabled." % (name or source_addon_id),
-                )
-                return
+        status, friendly = _addon_status(source_addon_id)
+        if status == "missing":
+            xbmcgui.Dialog().ok(
+                "Test This Path",
+                "[B]%s[/B] is not installed." % source_addon_id,
+            )
+            return
+        if status == "disabled":
+            xbmcgui.Dialog().ok(
+                "Test This Path",
+                "[B]%s[/B] is disabled." % (friendly or source_addon_id),
+            )
+            return
 
         kb = xbmc.Keyboard("Inception", "Sample query")
         kb.doModal()
