@@ -145,6 +145,14 @@ class SPaths:
             self.home_window.clearProperty(f"altus.search.history.{i}.count")
             self.home_window.clearProperty(f"altus.search.history.{i}.last")
         self.home_window.setProperty("altus.search.history.count", "0")
+        # Reset the live-timestamps cadence signal — without this, the
+        # service tick keeps reading the prior most-recent timestamp and
+        # may stay on the 1s fast-poll cadence with nothing to update.
+        self.home_window.setProperty("altus.search.history.most_recent_ts", "0")
+        # Drop the cross-process dedup sentinel so the user can re-search
+        # the same term immediately after clearing — otherwise the live-
+        # search commit path silently skips the next add.
+        self.home_window.clearProperty("altus.search.last_committed.lower")
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
         self.home_window.clearProperty("altus.search.input.trakt.encoded")
