@@ -71,6 +71,10 @@ class LiveSearchMonitor(threading.Thread):
         self.home_window = xbmcgui.Window(10000)
         self._monitor = xbmc.Monitor()
         self._last_seen = self.home_window.getProperty("altus.search.input")
+        # Last edit-control text we mirrored to altus.search.input. Guard
+        # against re-mirroring on every tick (and clobbering python-driven
+        # writes that don't go through the edit control).
+        self._last_edit = ""
         self._last_focus_id = 0
         self._last_change = 0.0
         self._pending = False
@@ -161,6 +165,16 @@ class LiveSearchMonitor(threading.Thread):
 
     def _tick(self):
         activity = False
+        # Read the native edit control via InfoLabel (safe from this daemon
+        # thread — getControl().getText() is not, per
+        # feedback_kodi_getcontrol_thread_unsafe.md). Mirror to altus.search.input
+        # only when the edit text actually changed since the last tick, so
+        # that python-driven property writes (e.g. history replay via
+        # search_input) aren't clobbered by the next mirror tick.
+        edit_text = xbmc.getInfoLabel("Control.GetLabel(9100).index(1)")
+        if edit_text != self._last_edit:
+            self._last_edit = edit_text
+            self.home_window.setProperty("altus.search.input", edit_text)
         cur = self.home_window.getProperty("altus.search.input")
         if cur != self._last_seen:
             self._last_seen = cur

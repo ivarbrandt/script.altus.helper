@@ -331,20 +331,27 @@ def routing():
 
         return SPaths().re_search()
 
-    if mode == "live_search_commit":
-        from modules.search_utils import SPaths
-
-        return SPaths().live_input()
-
     if mode == "commit_search_history":
         from modules.search_utils import SPaths
 
         return SPaths().commit_live_search_history()
 
-    if mode == "search_key":
-        from modules.search_utils import SPaths
-
-        return SPaths().search_key(action=_get("action", ""), char=_get("char", ""))
+    if mode == "clear_widget_paths":
+        # Force every search widget's content_path to NOOP_URL so they
+        # unmount, without touching altus.search.input.
+        from modules.search_manager.xml_generator import (
+            NOOP_URL,
+            iter_visible_widgets_with_ids,
+        )
+        home = xbmcgui.Window(10000)
+        for list_id, w in iter_visible_widgets_with_ids():
+            home.setProperty("altus.search.widget.%s.path" % list_id, NOOP_URL)
+            if w.get("is_stacked"):
+                home.setProperty("altus.search.child.%s.path" % list_id, NOOP_URL)
+                home.clearProperty("altus.search.child.%s.label" % list_id)
+        home.clearProperty("altus.search.input.encoded")
+        home.clearProperty("altus.search.input.trakt.encoded")
+        return
 
     if mode == "open_search_window":
         from modules.search_utils import SPaths

@@ -156,10 +156,6 @@ class SPaths:
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
         self.home_window.clearProperty("altus.search.input.trakt.encoded")
-        self.home_window.clearProperty("altus.search.input.display")
-        self.home_window.clearProperty("altus.search.input.before")
-        self.home_window.clearProperty("altus.search.input.after")
-        self.home_window.clearProperty("altus.search.cursor")
         self.home_window.setProperty(
             "altus.search.history.empty",
             "Your search history is empty. Click the search icon above to perform a new search.",
@@ -268,10 +264,6 @@ class SPaths:
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
         self.home_window.clearProperty("altus.search.input.trakt.encoded")
-        self.home_window.clearProperty("altus.search.input.display")
-        self.home_window.clearProperty("altus.search.input.before")
-        self.home_window.clearProperty("altus.search.input.after")
-        self.home_window.clearProperty("altus.search.cursor")
         xbmc.sleep(200)
         count_str = self.home_window.getProperty("altus.search.history.count")
         count = int(count_str) if count_str else 0
@@ -309,7 +301,6 @@ class SPaths:
         self.home_window.setProperty(
             "altus.search.input.trakt.encoded", encoded_search_term
         )
-        self._set_display(search_term, len(search_term))
         # Confirmed-search path: skip the keystroke debounce. Resolve and
         # publish widget paths now so SetFocus(2000) downstream (re_search)
         # has loadable widget containers to land on.
@@ -317,13 +308,12 @@ class SPaths:
             COMMITTED_TERM_PROPERTY,
             write_resolved_widget_paths,
         )
+
         write_resolved_widget_paths(encoded_search_term)
         # Stamp the cross-process commit sentinel so LiveSearchMonitor's
         # P8e widget-focus path doesn't double-bump search_count for this
         # term. Cleared by the monitor when input goes empty.
-        self.home_window.setProperty(
-            COMMITTED_TERM_PROPERTY, search_term.casefold()
-        )
+        self.home_window.setProperty(COMMITTED_TERM_PROPERTY, search_term.casefold())
         if not from_history:
             xbmc.executebuiltin("SetFocus(2000)")
 
@@ -347,110 +337,16 @@ class SPaths:
 
     def re_search(self):
         search_term = xbmc.getInfoLabel("ListItem.Label")
+        # Mark this session as "results came from a history click" so 803's
+        # onleft path (via 802's conditional onfocus) knows to flush the
+        # widgets when the user navigates back. Cleared by 801/802 onfocus
+        # and by the search window's onload.
+        self.home_window.setProperty("altus.search.from", "history")
         self.search_input(search_term, True)
         xbmc.sleep(100)
         xbmc.executebuiltin("SetFocus(9000,0,absolute)")
         xbmc.sleep(300)
         xbmc.executebuiltin("SetFocus(2000)")
-
-    def _set_display(self, text, cursor):
-        """Render the visible input string for the live keyboard. Splits the
-        text into ``before`` and ``after`` halves around the cursor so the
-        skin can build two stacked labels (one with an opaque cursor, one
-        with a transparent one) for a no-jitter blink. The legacy
-        ``input.display`` single-label property is kept for back-compat."""
-        cursor = max(0, min(cursor, len(text)))
-        self.home_window.setProperty("altus.search.cursor", str(cursor))
-        self.home_window.setProperty("altus.search.input.before", text[:cursor])
-        self.home_window.setProperty("altus.search.input.after", text[cursor:])
-        self.home_window.setProperty(
-            "altus.search.input.display", text[:cursor] + "[B]|[/B]" + text[cursor:]
-        )
-
-    def search_key(self, action, char=""):
-        """Per-keystroke entry point for the custom QWERTY keyboard (P8d).
-
-        Maintains a virtual cursor in ``altus.search.cursor``. Edit operations
-        act at the cursor; left/right/home/end move the cursor without
-        triggering a widget reload.
-        """
-        current = self.home_window.getProperty("altus.search.input") or ""
-        cursor_str = self.home_window.getProperty("altus.search.cursor") or ""
-        try:
-            cursor = int(cursor_str)
-        except ValueError:
-            cursor = len(current)
-        cursor = max(0, min(cursor, len(current)))
-
-        if action == "append":
-            new_value = current[:cursor] + char + current[cursor:]
-            new_cursor = cursor + len(char)
-        elif action == "backspace":
-            if cursor == 0:
-                return
-            new_value = current[: cursor - 1] + current[cursor:]
-            new_cursor = cursor - 1
-        elif action == "delete":
-            if cursor >= len(current):
-                return
-            new_value = current[:cursor] + current[cursor + 1 :]
-            new_cursor = cursor
-        elif action == "left":
-            new_value, new_cursor = current, max(0, cursor - 1)
-        elif action == "right":
-            new_value, new_cursor = current, min(len(current), cursor + 1)
-        elif action == "home":
-            new_value, new_cursor = current, 0
-        elif action == "end":
-            new_value, new_cursor = current, len(current)
-        elif action == "space":
-            new_value = current[:cursor] + " " + current[cursor:]
-            new_cursor = cursor + 1
-        elif action == "clear":
-            new_value, new_cursor = "", 0
-        else:
-            return
-
-        if new_value == current and action in ("left", "right", "home", "end"):
-            self._set_display(new_value, new_cursor)
-            return
-        self.live_input(search_term=new_value, cursor=new_cursor)
-
-    def live_input(self, search_term=None, cursor=None):
-        """Push the live input to the search properties without inserting into
-        history. Empty/whitespace clears all search-input properties so widgets
-        unmount cleanly. Returns immediately — LiveSearchMonitor (P8b) watches
-        ``altus.search.input`` and dispatches the widget reload once the value
-        settles for ~500ms, so this is safe to call per-keystroke from the
-        QWERTY keyboard.
-
-        ``cursor`` defaults to end-of-string (used by external callers like
-        history replay); search_key passes its computed cursor explicitly.
-        """
-        if search_term is None:
-            return
-        search_term = (search_term or "").rstrip("\n\r")
-        if not search_term.strip():
-            self.home_window.clearProperty("altus.search.input")
-            self.home_window.clearProperty("altus.search.input.encoded")
-            self.home_window.clearProperty("altus.search.input.trakt.encoded")
-            self.home_window.clearProperty("altus.search.input.display")
-            self.home_window.clearProperty("altus.search.cursor")
-            return
-        # NOTE: do NOT write altus.search.input.encoded / .trakt.encoded here.
-        # Generated search widgets embed $INFO[...input.encoded] in their
-        # <content> path; Kodi auto-refetches whenever that property changes,
-        # so writing it per-keystroke bypasses the debounce. LiveSearchMonitor
-        # writes the encoded properties once the input settles.
-        #
-        # Also do NOT toggle altus.search.refreshing here. Widget visibility
-        # in Widgets_*.xml keys on it; flipping it per-keystroke causes
-        # hidden widgets to remount and re-resolve their <content> paths
-        # immediately. The monitor sets/clears it around the actual fire.
-        self.home_window.setProperty("altus.search.input", search_term)
-        if cursor is None:
-            cursor = len(search_term)
-        self._set_display(search_term, cursor)
 
     def toggle_search_filter(self, kind):
         """Toggle a kind in the live-mode filter pill panel (P8c).
