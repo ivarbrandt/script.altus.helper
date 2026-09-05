@@ -168,51 +168,53 @@ class LiveSearchMonitor(threading.Thread):
             if self._monitor.waitForAbort(POLL_MS / 1000.0):
                 break
 
+    def _mirror_edit_control(self):
+        """Mirror the native edit control into altus.search.input.
+
+        Read via InfoLabel — getControl().getText() is not safe from this
+        daemon thread (feedback_kodi_getcontrol_thread_unsafe.md). Writes only
+        when the text actually changed, so python-driven property writes (e.g.
+        history replay via search_input) aren't clobbered by the next tick.
+
+        Callers must confirm control 9100 is addressable first. That check and
+        the InfoLabel read here are separate calls, though, so a dialog opening
+        between them still yields a spurious "" — which would wipe a live query,
+        unmount every widget, and (by also resetting _last_edit) write the stale
+        edit text back when the dialog closes. Losing text is the only
+        unrecoverable direction, so re-verify before accepting an empty read. A
+        genuine clear still passes, because 9100 stays addressable.
+        """
+        edit_text = xbmc.getInfoLabel("Control.GetLabel(9100).index(1)")
+        if edit_text == self._last_edit:
+            return
+        if not edit_text and self._last_edit:
+            if not xbmc.getCondVisibility(
+                "Window.IsActive(1121) + Control.IsVisible(9100)"
+            ):
+                xbmc.log(
+                    "[altus.livesearch] discarded spurious empty read "
+                    "(prev=%r) — dialog opened mid-tick" % self._last_edit,
+                    xbmc.LOGINFO,
+                )
+                return
+        self._last_edit = edit_text
+        self.home_window.setProperty("altus.search.input", edit_text)
+
     def _tick(self):
         activity = False
-        # Read the native edit control via InfoLabel (safe from this daemon
-        # thread — getControl().getText() is not, per
-        # feedback_kodi_getcontrol_thread_unsafe.md). Mirror to altus.search.input
-        # only when the edit text actually changed since the last tick, so
-        # that python-driven property writes (e.g. history replay via
-        # search_input) aren't clobbered by the next mirror tick.
-        # Only trust Control.GetLabel(9100) when control 9100 is actually
-        # addressable. Both Control.GetLabel and Control.IsVisible resolve
-        # against the ACTIVE window, so IsVisible(9100) is false in exactly the
-        # cases where GetLabel(9100) returns a meaningless empty string —
-        # whatever is on top, modal or not. Enumerating dialog types does not
-        # work here: Window.IsActive(1121) stays true underneath an open
-        # dialog, and redlight's custom dialogs are non-modal, so neither
-        # Window.IsVisible(contextmenu) nor System.Has*ModalDialog catches them.
-        #
-        # Without this, an empty read clobbers altus.search.input (blanking
-        # every widget) AND overwrites _last_edit, so closing the dialog writes
-        # the stale edit-control text back — resurrecting a typed term over one
-        # replayed from history.
-        if not xbmc.getCondVisibility(
-            "Window.IsActive(1121) + Control.IsVisible(9100)"
-        ):
-            return
-        edit_text = xbmc.getInfoLabel("Control.GetLabel(9100).index(1)")
-        if edit_text != self._last_edit:
-            # The guard above and this read are not atomic: a dialog opening
-            # between them passes the guard, then makes GetLabel(9100) return
-            # "" — which would clobber a live query and unmount every widget.
-            # Losing text is the only unrecoverable direction, so re-verify
-            # before accepting an empty read. A genuine clear (user deleting
-            # the text) still passes, because 9100 stays addressable.
-            if not edit_text and self._last_edit:
-                if not xbmc.getCondVisibility(
-                    "Window.IsActive(1121) + Control.IsVisible(9100)"
-                ):
-                    xbmc.log(
-                        "[altus.livesearch] discarded spurious empty read "
-                        "(prev=%r) — dialog opened mid-tick" % self._last_edit,
-                        xbmc.LOGINFO,
-                    )
-                    return
-            self._last_edit = edit_text
-            self.home_window.setProperty("altus.search.input", edit_text)
+        # Gate ONLY the mirror on 9100 being addressable. Everything below —
+        # input bookkeeping, the clear path, focus handling — must keep running
+        # when it isn't. Skipping the whole tick lets altus.search.input drift
+        # away from _last_seen while 9100 is hidden (history mode), so when it
+        # reappears the monitor treats the stale value as new input and re-fires
+        # the debounce, reloading widgets that were meant to stay cleared.
+        # Control.GetLabel and Control.IsVisible both resolve against the ACTIVE
+        # window, so IsVisible(9100) is false in exactly the cases where the
+        # read is meaningless — whatever is on top, modal or not. Enumerating
+        # dialog types does not work: Window.IsActive(1121) stays true beneath
+        # an open dialog, and redlight's custom dialogs are non-modal.
+        if xbmc.getCondVisibility("Window.IsActive(1121) + Control.IsVisible(9100)"):
+            self._mirror_edit_control()
         cur = self.home_window.getProperty("altus.search.input")
         if cur != self._last_seen:
             self._last_seen = cur
@@ -265,6 +267,16 @@ class LiveSearchMonitor(threading.Thread):
             return
         if not self._pending:
             return
+        # Don't fan out plugin fetches while the search window isn't front.
+        # Control.IsVisible(9100) is false whenever something is on top (see
+        # the mirror gate above), and a fetch the user can't see only competes
+        # for worker threads. _pending survives, so the refresh runs as soon as
+        # they come back — and _last_change is already stale by then, so it
+        # fires immediately rather than waiting out another debounce.
+        if not xbmc.getCondVisibility(
+            "Window.IsActive(1121) + Control.IsVisible(9100)"
+        ):
+            return
         with self._refresh_lock:
             if self._refreshing:
                 return
@@ -290,7 +302,12 @@ class LiveSearchMonitor(threading.Thread):
         """Publish the encoded properties and the per-widget resolved URLs.
         Containers bound to ``altus.search.widget.<id>.path`` via $INFO
         refetch automatically when the property changes. Then kick the
-        legacy stacked-Trakt widgets and clear the in-progress flag."""
+        legacy stacked-Trakt widgets and clear the in-progress flag.
+
+        The COOLDOWN_MS sleep is load-bearing: it holds _refreshing so the next
+        refresh cannot start until the containers have had time to settle. An
+        earlier attempt to abandon superseded refreshes released it early, which
+        removed that spacing during typing and left widgets half-loaded."""
         from modules.cpath_maker import starting_search_widgets
 
         try:
