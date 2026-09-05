@@ -19,7 +19,7 @@ ROUND_MAX_MS = 20000
 # handling (the monitor thread is asleep at that point — see _do_refresh step
 # markers), so the only lever left is lowering how many run concurrently.
 # Mitigation, not a fix: it reduces the odds, it cannot remove them.
-STAGGER_MS = 400
+STAGGER_MS = 300
 # Ceiling on how long the fire will wait for widgets to finish loading. A dead
 # addon or a hung network call can leave a container updating indefinitely;
 # without this, search would wedge permanently rather than degrade.
