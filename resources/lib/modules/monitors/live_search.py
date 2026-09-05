@@ -176,17 +176,41 @@ class LiveSearchMonitor(threading.Thread):
         # only when the edit text actually changed since the last tick, so
         # that python-driven property writes (e.g. history replay via
         # search_input) aren't clobbered by the next mirror tick.
-        # Skip the mirror entirely when the search window isn't the active
-        # window (e.g. contextmenu or another dialog opened on top). In that
-        # case Control.GetLabel(9100) resolves against the active dialog,
-        # returns empty, and we'd clobber altus.search.input with "" — which
-        # fires the empty-input clear path and unmounts every widget.
+        # Only trust Control.GetLabel(9100) when control 9100 is actually
+        # addressable. Both Control.GetLabel and Control.IsVisible resolve
+        # against the ACTIVE window, so IsVisible(9100) is false in exactly the
+        # cases where GetLabel(9100) returns a meaningless empty string —
+        # whatever is on top, modal or not. Enumerating dialog types does not
+        # work here: Window.IsActive(1121) stays true underneath an open
+        # dialog, and redlight's custom dialogs are non-modal, so neither
+        # Window.IsVisible(contextmenu) nor System.Has*ModalDialog catches them.
+        #
+        # Without this, an empty read clobbers altus.search.input (blanking
+        # every widget) AND overwrites _last_edit, so closing the dialog writes
+        # the stale edit-control text back — resurrecting a typed term over one
+        # replayed from history.
         if not xbmc.getCondVisibility(
-            "Window.IsActive(1121) + !Window.IsVisible(contextmenu)"
+            "Window.IsActive(1121) + Control.IsVisible(9100)"
         ):
             return
         edit_text = xbmc.getInfoLabel("Control.GetLabel(9100).index(1)")
         if edit_text != self._last_edit:
+            # The guard above and this read are not atomic: a dialog opening
+            # between them passes the guard, then makes GetLabel(9100) return
+            # "" — which would clobber a live query and unmount every widget.
+            # Losing text is the only unrecoverable direction, so re-verify
+            # before accepting an empty read. A genuine clear (user deleting
+            # the text) still passes, because 9100 stays addressable.
+            if not edit_text and self._last_edit:
+                if not xbmc.getCondVisibility(
+                    "Window.IsActive(1121) + Control.IsVisible(9100)"
+                ):
+                    xbmc.log(
+                        "[altus.livesearch] discarded spurious empty read "
+                        "(prev=%r) — dialog opened mid-tick" % self._last_edit,
+                        xbmc.LOGINFO,
+                    )
+                    return
             self._last_edit = edit_text
             self.home_window.setProperty("altus.search.input", edit_text)
         cur = self.home_window.getProperty("altus.search.input")
