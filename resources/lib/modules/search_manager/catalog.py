@@ -211,6 +211,29 @@ CATALOG = [
         is_stacked=1,
         stacked_type="WidgetListLandscape",
     ),
+    # --- REDLIGHT ------------------------------------------------------------
+    # Same route shape as FEN LIGHT, except People takes &query= rather than
+    # &key_id=.
+    _entry(
+        "plugin.video.redlight",
+        "RED LIGHT",
+        "Movies",
+        "plugin://plugin.video.redlight/?mode=build_movie_list&action=tmdb_movies_search&query="
+        + _Q,
+    ),
+    _entry(
+        "plugin.video.redlight",
+        "RED LIGHT",
+        "TV Shows",
+        "plugin://plugin.video.redlight/?mode=build_tvshow_list&action=tmdb_tv_search&query="
+        + _Q,
+    ),
+    _entry(
+        "plugin.video.redlight",
+        "RED LIGHT",
+        "People",
+        "plugin://plugin.video.redlight/?mode=person_direct.search&query=" + _Q,
+    ),
     # --- UMBRELLA ------------------------------------------------------------
     # People & Trakt Lists are split per-content; kind stays unified for the
     # filter UX, label disambiguates.
