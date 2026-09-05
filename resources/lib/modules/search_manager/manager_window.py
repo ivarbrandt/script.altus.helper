@@ -155,6 +155,7 @@ def _addon_status(addon_id):
         return ("disabled", name)
     return ("ok", None)
 
+
 # Friendly ↔ internal display-type mapping. Search widgets only use the
 # subset that makes sense for poster / landscape / square content.
 DISPLAY_TYPE_MAP = {
@@ -206,10 +207,18 @@ TARGETS = ["videos", "music"]
 # malformed library paths from legitimate empty result sets. Mirrors the
 # TYPES dict in modules/library_search.py.
 LIBRARY_URL_PREFIX = "plugin://script.altus.helper/"
-LIBRARY_TYPES = frozenset({
-    "movies", "tvshows", "seasons", "episodes",
-    "musicvideos", "songs", "albums", "artists",
-})
+LIBRARY_TYPES = frozenset(
+    {
+        "movies",
+        "tvshows",
+        "seasons",
+        "episodes",
+        "musicvideos",
+        "songs",
+        "albums",
+        "artists",
+    }
+)
 
 
 def _parse_library_url(url):
@@ -928,14 +937,12 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
             status, friendly = _addon_status(widget.get("source_addon_id"))
             if status != "ok":
                 if status == "disabled":
-                    msg = (
-                        "Enable [B]%s[/B] before showing this widget."
-                        % (friendly or widget.get("source_addon_id"))
+                    msg = "Enable [B]%s[/B] before showing this widget." % (
+                        friendly or widget.get("source_addon_id")
                     )
                 else:
-                    msg = (
-                        "Install [B]%s[/B] before showing this widget."
-                        % widget.get("source_addon_id")
+                    msg = "Install [B]%s[/B] before showing this widget." % widget.get(
+                        "source_addon_id"
                     )
                 xbmcgui.Dialog().notification(
                     "Search Manager", msg, xbmcgui.NOTIFICATION_WARNING, 4000

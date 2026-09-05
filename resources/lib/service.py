@@ -178,9 +178,7 @@ class Service(xbmc.Monitor):
             most_recent_ts = int(most_recent_str) if most_recent_str else 0
         except ValueError:
             most_recent_ts = 0
-        sub_minute = bool(
-            most_recent_ts and (int(time.time()) - most_recent_ts) < 60
-        )
+        sub_minute = bool(most_recent_ts and (int(time.time()) - most_recent_ts) < 60)
         # Transition from sub-minute → >=minute needs an immediate refresh so
         # "59 seconds ago" flips to "1 minute ago" without waiting a full 60s
         # for the slow-cadence timer to come around.
