@@ -61,9 +61,11 @@ def routing():
         return SPaths().refresh_history_timestamps()
 
     if mode == "generate_search_xml":
-        from modules.search_manager.xml_generator import generate_and_reload
+        from modules.search_manager.xml_generator import (
+            generate_and_reload as generate_search_and_reload,
+        )
 
-        return generate_and_reload()
+        return generate_search_and_reload()
 
     if mode == "open_search_manager":
         from modules.search_manager.manager_window import open_manager
