@@ -344,11 +344,16 @@ def routing():
             iter_visible_widgets_with_ids,
         )
         home = xbmcgui.Window(10000)
-        for list_id, w in iter_visible_widgets_with_ids():
-            home.setProperty("altus.search.widget.%s.path" % list_id, NOOP_URL)
+        # Order matters: flush stacked children before parents so the child
+        # containers release their resolved items before the parent group
+        # tears down. Otherwise children stay stuck on prior artwork.
+        widgets = list(iter_visible_widgets_with_ids())
+        for list_id, w in widgets:
             if w.get("is_stacked"):
                 home.setProperty("altus.search.child.%s.path" % list_id, NOOP_URL)
                 home.clearProperty("altus.search.child.%s.label" % list_id)
+        for list_id, _w in widgets:
+            home.setProperty("altus.search.widget.%s.path" % list_id, NOOP_URL)
         home.clearProperty("altus.search.input.encoded")
         home.clearProperty("altus.search.input.trakt.encoded")
         return

@@ -130,8 +130,11 @@ class LiveSearchMonitor(threading.Thread):
         # ranges overlap, see search_manager/xml_generator comment).
         # Both must move in lockstep so flushing one without the other
         # can't leave a child rendering the prior session's artwork.
+        # Order matters: write children before parents. Flushing the parent
+        # first tears down the stacked group while the child container still
+        # holds resolved items, leaving them stuck on the prior session's
+        # artwork until the next focus/refresh.
         for list_id, _url, is_stacked in self._widget_cache:
-            self.home_window.setProperty(self._path_property(list_id), value)
             if is_stacked:
                 self.home_window.setProperty(
                     "altus.search.child.%s.path" % list_id, value
@@ -139,6 +142,8 @@ class LiveSearchMonitor(threading.Thread):
                 self.home_window.clearProperty(
                     "altus.search.child.%s.label" % list_id
                 )
+        for list_id, _url, _is_stacked in self._widget_cache:
+            self.home_window.setProperty(self._path_property(list_id), value)
 
     def _write_resolved_paths(self, encoded):
         write_resolved_widget_paths(encoded)
@@ -171,6 +176,15 @@ class LiveSearchMonitor(threading.Thread):
         # only when the edit text actually changed since the last tick, so
         # that python-driven property writes (e.g. history replay via
         # search_input) aren't clobbered by the next mirror tick.
+        # Skip the mirror entirely when the search window isn't the active
+        # window (e.g. contextmenu or another dialog opened on top). In that
+        # case Control.GetLabel(9100) resolves against the active dialog,
+        # returns empty, and we'd clobber altus.search.input with "" — which
+        # fires the empty-input clear path and unmounts every widget.
+        if not xbmc.getCondVisibility(
+            "Window.IsActive(1121) + !Window.IsVisible(contextmenu)"
+        ):
+            return
         edit_text = xbmc.getInfoLabel("Control.GetLabel(9100).index(1)")
         if edit_text != self._last_edit:
             self._last_edit = edit_text
