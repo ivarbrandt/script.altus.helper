@@ -6,7 +6,24 @@ import xbmcgui
 
 DEBOUNCE_MS = 1000
 POLL_MS = 50
-COOLDOWN_MS = 1200
+# Tail buffer after the containers finish, not the throttle itself — the wait
+# for IsUpdating to clear is what actually spaces rounds apart.
+COOLDOWN_MS = 300
+# Containers report IsUpdating ~250ms after the paths land; wait past that
+# before testing, or the round looks finished before it has started.
+SETTLE_GRACE_MS = 500
+# Ceiling on the wait for a round to finish, so a hung fetch can't wedge search.
+ROUND_MAX_MS = 20000
+# Gap between successive widget path writes. Writing them in a burst makes Kodi
+# start every plugin fetch at once; crashes were traced to Kodi's own fetch
+# handling (the monitor thread is asleep at that point — see _do_refresh step
+# markers), so the only lever left is lowering how many run concurrently.
+# Mitigation, not a fix: it reduces the odds, it cannot remove them.
+STAGGER_MS = 400
+# Ceiling on how long the fire will wait for widgets to finish loading. A dead
+# addon or a hung network call can leave a container updating indefinitely;
+# without this, search would wedge permanently rather than degrade.
+MAX_DEFER_MS = 15000
 
 # QWERTY key control IDs in Custom_1121_SearchResults.xml — focus changes
 # within this range are treated as "still navigating between keys" and
@@ -29,6 +46,34 @@ _TRAKT_MARKER = "$INFO[Window(home).Property(altus.search.input.trakt.encoded)]"
 COMMITTED_TERM_PROPERTY = "altus.search.last_committed.lower"
 
 
+def set_gui_property(name, value):
+    """Set a home-window property from the GUI thread.
+
+    Any property bound to a container's content_path via $INFO MUST go through
+    here rather than Window.setProperty. Writing one from a daemon thread while
+    the GUI is rendering that container races the GUI thread and hard-crashes
+    Kodi — no Python traceback, the log's tail is lost to the buffer. The same
+    race is documented in search_manager/xml_generator for Window(1121); moving
+    these keys to Window(home) made it rarer, not safe. Reproducible by typing
+    while search results are still loading.
+
+    xbmc.executebuiltin() runs on the app thread, which removes the race.
+
+    Caveat: the builtin splits its arguments on commas, so a value containing a
+    literal comma would be truncated. No widget URL in the catalog contains one
+    and hand-entered custom widgets are URLs too, so this is accepted rather
+    than guarded — but a value with a comma will corrupt the path silently, so
+    check here first if a widget ever loads a mangled URL.
+    """
+    xbmc.executebuiltin("SetProperty(%s,%s,home)" % (name, value))
+
+
+def clear_gui_property(name):
+    """Clear a content_path-bound property from the GUI thread. See
+    set_gui_property for why these can't use Window.clearProperty."""
+    xbmc.executebuiltin("ClearProperty(%s,home)" % name)
+
+
 def write_resolved_widget_paths(encoded_term):
     """Resolve every visible search widget's url_template against the given
     URL-encoded query and publish to each widget's path property. Used by
@@ -39,15 +84,20 @@ def write_resolved_widget_paths(encoded_term):
     from modules.search_manager.xml_generator import (
         iter_visible_widgets_with_ids,
     )
-    import xbmcgui as _xbmcgui
 
-    home = _xbmcgui.Window(10000)
+    first = True
     for list_id, w in iter_visible_widgets_with_ids():
         template = w["url_template"]
         resolved = template.replace(_ENCODED_MARKER, encoded_term).replace(
             _TRAKT_MARKER, encoded_term
         )
-        home.setProperty("altus.search.widget.%s.path" % list_id, resolved)
+        # Stagger so Kodi doesn't start every plugin fetch at once. No sleep
+        # before the first write, so a single-widget config is unaffected and
+        # the first results appear as promptly as before.
+        if not first:
+            xbmc.sleep(STAGGER_MS)
+        first = False
+        set_gui_property("altus.search.widget.%s.path" % list_id, resolved)
 
 
 class LiveSearchMonitor(threading.Thread):
@@ -80,6 +130,9 @@ class LiveSearchMonitor(threading.Thread):
         self._pending = False
         self._refresh_lock = threading.Lock()
         self._refreshing = False
+        # When the fire first started waiting on still-loading widgets, so the
+        # MAX_DEFER_MS ceiling can be measured. None while not deferring.
+        self._defer_since = None
         self._widget_cache = self._load_widget_cache()
         from modules.search_manager.xml_generator import INITIAL_PATH
         self._write_resting_paths(INITIAL_PATH)
@@ -119,6 +172,25 @@ class LiveSearchMonitor(threading.Thread):
             self._widget_focus_ids = set()
             return []
 
+    def _widgets_still_loading(self):
+        """True while any search container is still fetching.
+
+        Starting a round on top of one still in flight re-paths containers
+        mid-fetch: widgets half-populate, some never come back, and enough
+        overlap takes Kodi down. DEBOUNCE_MS only made that collision less
+        likely — typing while results are loading still reproduced it at 3000ms.
+
+        _widget_focus_ids already holds exactly the ids to check: every parent
+        list_id plus its stacked child. Ids with no matching control just read
+        false.
+        """
+        updating = [
+            list_id
+            for list_id in self._widget_focus_ids
+            if xbmc.getCondVisibility("Container(%s).IsUpdating" % list_id)
+        ]
+        return bool(updating)
+
     def _path_property(self, list_id):
         return "altus.search.widget.%s.path" % list_id
 
@@ -134,16 +206,13 @@ class LiveSearchMonitor(threading.Thread):
         # first tears down the stacked group while the child container still
         # holds resolved items, leaving them stuck on the prior session's
         # artwork until the next focus/refresh.
+        # Content_path-bound keys — GUI thread only, see set_gui_property.
         for list_id, _url, is_stacked in self._widget_cache:
             if is_stacked:
-                self.home_window.setProperty(
-                    "altus.search.child.%s.path" % list_id, value
-                )
-                self.home_window.clearProperty(
-                    "altus.search.child.%s.label" % list_id
-                )
+                set_gui_property("altus.search.child.%s.path" % list_id, value)
+                clear_gui_property("altus.search.child.%s.label" % list_id)
         for list_id, _url, _is_stacked in self._widget_cache:
-            self.home_window.setProperty(self._path_property(list_id), value)
+            set_gui_property(self._path_property(list_id), value)
 
     def _write_resolved_paths(self, encoded):
         write_resolved_widget_paths(encoded)
@@ -282,6 +351,18 @@ class LiveSearchMonitor(threading.Thread):
                 return
             if (time.monotonic() - self._last_change) * 1000 < DEBOUNCE_MS:
                 return
+            # Never start a round while the previous one is still loading.
+            # _pending stays set, so this retries every tick and fires as soon
+            # as the containers settle — instant for library widgets, patient
+            # only when plugins are slow. _last_change isn't touched, so no
+            # further debounce is served after the wait.
+            if self._widgets_still_loading():
+                now = time.monotonic()
+                if self._defer_since is None:
+                    self._defer_since = now
+                if (now - self._defer_since) * 1000 < MAX_DEFER_MS:
+                    return
+            self._defer_since = None
             self._pending = False
             self._refreshing = True
             settled_value = cur
@@ -317,6 +398,18 @@ class LiveSearchMonitor(threading.Thread):
             self.home_window.setProperty("altus.search.input.trakt.encoded", encoded)
             self._write_resolved_paths(encoded)
             starting_search_widgets()
+            # Hold _refreshing for the round's real duration, not a guess.
+            # Measured: containers report IsUpdating within ~250ms of the paths
+            # landing and finish around 3s — but COOLDOWN_MS used to release the
+            # throttle at 1.2s, so any fire between 1.2s and 3s started a second
+            # round on top of one still fetching. That re-paths containers
+            # mid-fetch, which is why widgets sometimes never came back as the
+            # term changed. Slow or erroring plugins stretch the round well past
+            # 3s, which no fixed constant can cover.
+            xbmc.sleep(SETTLE_GRACE_MS)
+            deadline = time.monotonic() + (ROUND_MAX_MS / 1000.0)
+            while time.monotonic() < deadline and self._widgets_still_loading():
+                xbmc.sleep(100)
             xbmc.sleep(COOLDOWN_MS)
             self.home_window.clearProperty("altus.search.refreshing")
         finally:
