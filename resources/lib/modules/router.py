@@ -345,27 +345,22 @@ def routing():
             NOOP_URL,
             iter_visible_widgets_with_ids,
         )
-        from modules.monitors.live_search import (
-            clear_gui_property,
-            set_gui_property,
-        )
+        from modules.monitors.live_search import bump_search_generation
 
         home = xbmcgui.Window(10000)
+        # Invalidate any staggered path write in flight before clearing, or it
+        # will re-write the widgets it hasn't reached yet over our NOOPs.
+        bump_search_generation()
         # Order matters: flush stacked children before parents so the child
         # containers release their resolved items before the parent group
         # tears down. Otherwise children stay stuck on prior artwork.
-        # Content_path-bound keys go through set_gui_property — writing them
-        # from this RunScript thread while the GUI renders those containers
-        # races the GUI thread and hard-crashes Kodi.
         widgets = list(iter_visible_widgets_with_ids())
         for list_id, w in widgets:
             if w.get("is_stacked"):
-                set_gui_property("altus.search.child.%s.path" % list_id, NOOP_URL)
-                clear_gui_property("altus.search.child.%s.label" % list_id)
+                home.setProperty("altus.search.child.%s.path" % list_id, NOOP_URL)
+                home.clearProperty("altus.search.child.%s.label" % list_id)
         for list_id, _w in widgets:
-            set_gui_property("altus.search.widget.%s.path" % list_id, NOOP_URL)
-        # Not content_path-bound (Python-only, no skin reference) — direct
-        # writes are fine.
+            home.setProperty("altus.search.widget.%s.path" % list_id, NOOP_URL)
         home.clearProperty("altus.search.input.encoded")
         home.clearProperty("altus.search.input.trakt.encoded")
         return

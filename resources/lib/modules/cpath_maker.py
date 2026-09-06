@@ -857,17 +857,10 @@ def starting_search_widgets():
             if not items:
                 continue
             first_item = items[0]
-            # Content_path-bound: must be set from the GUI thread. Imported
-            # here rather than at module scope because live_search imports
-            # this module (see the marker comment above) — by the time this
-            # runs, live_search is already in sys.modules, so the cycle
-            # never materialises.
-            from modules.monitors.live_search import set_gui_property
-
-            set_gui_property(
+            home.setProperty(
                 "altus.search.child.%s.label" % list_id, first_item["label"]
             )
-            set_gui_property(
+            home.setProperty(
                 "altus.search.child.%s.path" % list_id, first_item["file"]
             )
         except Exception:

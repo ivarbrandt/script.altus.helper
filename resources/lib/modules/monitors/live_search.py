@@ -45,33 +45,19 @@ _TRAKT_MARKER = "$INFO[Window(home).Property(altus.search.input.trakt.encoded)]"
 # firing a fresh commit. Cleared when input goes empty.
 COMMITTED_TERM_PROPERTY = "altus.search.last_committed.lower"
 
-
-def set_gui_property(name, value):
-    """Set a home-window property from the GUI thread.
-
-    Any property bound to a container's content_path via $INFO MUST go through
-    here rather than Window.setProperty. Writing one from a daemon thread while
-    the GUI is rendering that container races the GUI thread and hard-crashes
-    Kodi — no Python traceback, the log's tail is lost to the buffer. The same
-    race is documented in search_manager/xml_generator for Window(1121); moving
-    these keys to Window(home) made it rarer, not safe. Reproducible by typing
-    while search results are still loading.
-
-    xbmc.executebuiltin() runs on the app thread, which removes the race.
-
-    Caveat: the builtin splits its arguments on commas, so a value containing a
-    literal comma would be truncated. No widget URL in the catalog contains one
-    and hand-entered custom widgets are URLs too, so this is accepted rather
-    than guarded — but a value with a comma will corrupt the path silently, so
-    check here first if a widget ever loads a mangled URL.
-    """
-    xbmc.executebuiltin("SetProperty(%s,%s,home)" % (name, value))
+# Invalidation marker for an in-flight staggered path write. STAGGER_MS spaces
+# the per-widget writes ~300ms apart, so a clear arriving mid-loop wipes every
+# path and the loop then re-writes the widgets it hadn't reached yet — they
+# repopulate and appear stuck. A window property rather than an attribute
+# because the clear runs in a separate RunScript process.
+GENERATION_PROPERTY = "altus.search.generation"
 
 
-def clear_gui_property(name):
-    """Clear a content_path-bound property from the GUI thread. See
-    set_gui_property for why these can't use Window.clearProperty."""
-    xbmc.executebuiltin("ClearProperty(%s,home)" % name)
+def bump_search_generation():
+    """Invalidate any staggered path write currently in flight. Call from
+    anything that clears widget paths."""
+    home = xbmcgui.Window(10000)
+    home.setProperty(GENERATION_PROPERTY, "%.6f" % time.time())
 
 
 def write_resolved_widget_paths(encoded_term):
@@ -84,7 +70,10 @@ def write_resolved_widget_paths(encoded_term):
     from modules.search_manager.xml_generator import (
         iter_visible_widgets_with_ids,
     )
+    import xbmcgui as _xbmcgui
 
+    home = _xbmcgui.Window(10000)
+    generation = home.getProperty(GENERATION_PROPERTY)
     first = True
     for list_id, w in iter_visible_widgets_with_ids():
         template = w["url_template"]
@@ -97,7 +86,12 @@ def write_resolved_widget_paths(encoded_term):
         if not first:
             xbmc.sleep(STAGGER_MS)
         first = False
-        set_gui_property("altus.search.widget.%s.path" % list_id, resolved)
+        # Abandon if anything cleared the paths while we were sleeping —
+        # otherwise the widgets this loop hasn't reached yet get their real
+        # path written back over the clear and stay populated.
+        if home.getProperty(GENERATION_PROPERTY) != generation:
+            return
+        home.setProperty("altus.search.widget.%s.path" % list_id, resolved)
 
 
 class LiveSearchMonitor(threading.Thread):
@@ -206,13 +200,16 @@ class LiveSearchMonitor(threading.Thread):
         # first tears down the stacked group while the child container still
         # holds resolved items, leaving them stuck on the prior session's
         # artwork until the next focus/refresh.
-        # Content_path-bound keys — GUI thread only, see set_gui_property.
         for list_id, _url, is_stacked in self._widget_cache:
             if is_stacked:
-                set_gui_property("altus.search.child.%s.path" % list_id, value)
-                clear_gui_property("altus.search.child.%s.label" % list_id)
+                self.home_window.setProperty(
+                    "altus.search.child.%s.path" % list_id, value
+                )
+                self.home_window.clearProperty(
+                    "altus.search.child.%s.label" % list_id
+                )
         for list_id, _url, _is_stacked in self._widget_cache:
-            set_gui_property(self._path_property(list_id), value)
+            self.home_window.setProperty(self._path_property(list_id), value)
 
     def _write_resolved_paths(self, encoded):
         write_resolved_widget_paths(encoded)
@@ -292,6 +289,8 @@ class LiveSearchMonitor(threading.Thread):
             # until they stopped interacting. The clear is cheap (a few
             # property writes), no plugin fetch fans out from the main thread.
             if not cur:
+                # Same invalidation as the clear_widget_paths route.
+                bump_search_generation()
                 from modules.search_manager.xml_generator import NOOP_URL
                 self.home_window.clearProperty("altus.search.input.encoded")
                 self.home_window.clearProperty("altus.search.input.trakt.encoded")

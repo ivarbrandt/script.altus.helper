@@ -88,15 +88,10 @@ def widget_monitor(list_id):
                 # avoid the Window(11121) cross-thread crash and to avoid
                 # colliding with home widget IDs that share the same numeric
                 # range under the plain altus.<id>.* prefix.
-                # Content_path-bound: GUI thread only. Moving these to
-                # Window(home) made the cross-thread crash rarer, not safe —
-                # see set_gui_property.
-                from modules.monitors.live_search import set_gui_property
-
-                set_gui_property(
+                home_window.setProperty(
                     "altus.search.child.%s.label" % list_id, new_label
                 )
-                set_gui_property(
+                home_window.setProperty(
                     "altus.search.child.%s.path" % list_id, cpath_path
                 )
             else:
