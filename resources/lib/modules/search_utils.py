@@ -30,10 +30,14 @@ def _humanize_timestamp(ts):
     if not ts:
         return ""
     diff = int(time.time()) - int(ts)
-    if diff < 1:
+    # Bucketed to 10s below a minute. A per-second counter needs a per-second
+    # refresh, and the service loop's 0.2s tick can't hold that phase — the
+    # displayed value skipped seconds. At this granularity a late refresh is
+    # invisible, and it costs 6x fewer DB reads while the search window is open.
+    if diff < 10:
         return "just now"
     if diff < 60:
-        return "%d second%s ago" % (diff, "" if diff == 1 else "s")
+        return "%d seconds ago" % (diff // 10 * 10)
     if diff < 3600:
         n = diff // 60
         return "%d minute%s ago" % (n, "" if n == 1 else "s")

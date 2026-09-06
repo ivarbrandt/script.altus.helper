@@ -36,6 +36,8 @@ class Service(xbmc.Monitor):
         self._view_prefs_mtime = 0
         self._last_history_refresh = 0.0
         self._history_was_sub_minute = False
+        # 10s bucket the sub-minute labels were last rendered for.
+        self._last_history_bucket = 0
 
     def run(self):
         """Start the service and monitor."""
@@ -184,8 +186,19 @@ class Service(xbmc.Monitor):
         # for the slow-cadence timer to come around.
         just_crossed_minute = self._history_was_sub_minute and not sub_minute
         self._history_was_sub_minute = sub_minute
-        interval = 1 if sub_minute else 60
-        if not just_crossed_minute and now - self._last_history_refresh < interval:
+        if sub_minute:
+            # Keyed to the 10s bucket _humanize_timestamp renders, not to
+            # elapsed time. An elapsed-time interval drifts against the loop's
+            # 0.2s tick, which is what made the old per-second counter skip.
+            # Comparing the bucket itself means each one is rendered once, on
+            # its boundary, however the ticks happen to land.
+            current_bucket = int(time.time()) // 10
+            if not just_crossed_minute and current_bucket == self._last_history_bucket:
+                return
+            self._last_history_bucket = current_bucket
+        elif not just_crossed_minute and now - self._last_history_refresh < 60:
+            # Drift is invisible at minute resolution, so the elapsed check is
+            # fine here and avoids waking for a comparison every tick.
             return
         if xbmc.getSkinDir() != "skin.altus":
             return
