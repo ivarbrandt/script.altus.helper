@@ -4,18 +4,21 @@ RSYNC_OPTS := -avh --delete
 EXCLUDE_OPTS := --exclude='.git/' --exclude='.gitignore' --exclude='._*' --exclude='.DS_Store' --exclude='*.pyo' --exclude='*.pyc' --exclude='cache/' --exclude='Thumbs.db'
 m ?= ""
 SHELL := /bin/bash
-.PHONY: all sync test_sync status add commit push clean help check_dest
+.PHONY: all sync test_sync status add commit push clean help check_dest check_shadow
 all: help
 help:
 	@echo "Available targets:"
 	@echo "  make sync       - Sync changes to Mac Git repo ($(DEST_DIR))"
+	@echo "  make check_shadow - Scan for function-local imports shadowing module-level names"
 	@echo "  make status     - Git status in Mac repo"
 	@echo "  make add        - Git add in Mac repo"
 	@echo "  make commit m=\"Message\" - Commit in Mac repo"
 	@echo "  make push       - Git push from Mac repo"
 check_dest:
 	@if [ ! -d "$(DEST_DIR).git" ]; then echo "ERROR: Git repo not found at $(DEST_DIR)"; exit 1; fi
-sync: check_dest
+check_shadow:
+	@python3 scripts/check_shadow.py "$(SOURCE_DIR)resources/lib"
+sync: check_dest check_shadow
 	@rsync $(RSYNC_OPTS) $(EXCLUDE_OPTS) "$(SOURCE_DIR)" "$(DEST_DIR)"
 	@echo "Sync complete."
 test_sync: check_dest

@@ -21,8 +21,21 @@ from modules.widget_manager.xml_generator import (
 )
 from modules.widget_manager.default_config import create_default_sections
 from modules.widget_manager.migration import migrate, import_from_skin
+from modules.search_manager.default_config import (
+    apply_profile as apply_search_profile,
+    seed_profile_config as seed_search_profile,
+    save_unnamed_as as save_unnamed_search_as,
+)
 
 # from modules.logger import logger
+
+
+def _search_profile_files(profile):
+    """(search_config, search_history) paths for a profile name."""
+    from modules.search_manager.config_manager import profile_db_path
+    from modules.search_utils import profile_history_path
+
+    return profile_db_path(profile), profile_history_path(profile)
 
 
 def routing():
@@ -49,6 +62,39 @@ def routing():
         from modules.pvr import open_channel_guide
 
         return open_channel_guide()
+
+    if mode == "refresh_search_history":
+        from modules.search_utils import SPaths
+
+        return SPaths().refresh_search_history()
+
+    if mode == "refresh_history_timestamps":
+        from modules.search_utils import SPaths
+
+        return SPaths().refresh_history_timestamps()
+
+    if mode == "generate_search_xml":
+        from modules.search_manager.xml_generator import (
+            generate_and_reload as generate_search_and_reload,
+        )
+
+        return generate_search_and_reload()
+
+    if mode == "open_search_manager":
+        from modules.search_manager.manager_window import open_manager
+
+        return open_manager()
+
+    if mode == "initialize_search_config":
+        from modules.search_manager.default_config import ensure_search_config
+        from modules.search_manager.xml_generator import (
+            generate_and_reload as generate_search_and_reload,
+        )
+
+        seeded = ensure_search_config()
+        if seeded:
+            generate_search_and_reload()
+        return
 
     if "actions" in mode:
         from modules import actions
@@ -81,6 +127,15 @@ def routing():
     if mode == "migrate_and_generate":
         if not migrate():
             create_default_sections()
+        # Seed search config alongside widget config on first run, then run
+        # both generators so the home and search windows are ready.
+        from modules.search_manager.default_config import ensure_search_config
+        from modules.search_manager.xml_generator import (
+            generate_and_reload as generate_search_and_reload,
+        )
+        search_seeded = ensure_search_config()
+        if search_seeded:
+            generate_search_and_reload(reload_skin=False)
         return generate_and_reload()
 
     if mode == "create_default_sections":
@@ -91,15 +146,15 @@ def routing():
 
     if mode == "new_widget_config":
         name = sanitize_config_name(
-            xbmcgui.Dialog().input("Enter a name for the new config")
+            xbmcgui.Dialog().input("Enter a name for the new profile")
         )
         if not name:
             return
         existing = list_saved_configs()
         if name in existing:
             if not xbmcgui.Dialog().yesno(
-                "New Widget Config",
-                "A config named [B]%s[/B] already exists. Overwrite?" % name,
+                "New Altus Profile",
+                "A profile named [B]%s[/B] already exists. Overwrite?" % name,
             ):
                 return
         # Auto-save current config before switching
@@ -108,15 +163,16 @@ def routing():
             save_config_as(active)
         else:
             if xbmcgui.Dialog().yesno(
-                "New Widget Config",
-                "Your current config is unsaved and will be lost.[CR][CR]"
+                "New Altus Profile",
+                "Your current profile is unsaved and will be lost.[CR][CR]"
                 "Save it first?",
             ):
                 save_name = sanitize_config_name(
-                    xbmcgui.Dialog().input("Enter a name for your current config")
+                    xbmcgui.Dialog().input("Enter a name for your current profile")
                 )
                 if save_name:
                     save_config_as(save_name)
+                    save_unnamed_search_as(save_name)
         # Wipe current config and create defaults
         cm = ConfigManager()
         for section in cm.get_sections():
@@ -126,6 +182,9 @@ def routing():
         # Set new profile as active and save it
         xbmc.executebuiltin("Skin.SetString(altus_active_widget_config,%s)" % name)
         save_config_as(name)
+        # New profile: catalog-default search widgets, empty history (its
+        # spath_cache file doesn't exist yet and is created blank on first use).
+        apply_search_profile(name)
         generate_and_reload(active_config=name)
         return
 
@@ -134,11 +193,11 @@ def routing():
         configs = [c for c in list_saved_configs() if c != active]
         if not configs:
             xbmcgui.Dialog().ok(
-                "Load Widget Config",
-                "No other saved configs found.[CR][CR]" "Create a new config first.",
+                "Switch Altus Profile",
+                "No other saved profiles found.[CR][CR]" "Create a new profile first.",
             )
             return
-        idx = xbmcgui.Dialog().select("Select config to load", configs)
+        idx = xbmcgui.Dialog().select("Select profile to switch to", configs)
         if idx < 0:
             return
         chosen = configs[idx]
@@ -147,24 +206,29 @@ def routing():
             save_config_as(active)
         else:
             if xbmcgui.Dialog().yesno(
-                "Load Widget Config",
-                "Your current config is unsaved and will be lost.[CR][CR]"
+                "Switch Altus Profile",
+                "Your current profile is unsaved and will be lost.[CR][CR]"
                 "Save it first?",
             ):
                 save_name = sanitize_config_name(
-                    xbmcgui.Dialog().input("Enter a name for your current config")
+                    xbmcgui.Dialog().input("Enter a name for your current profile")
                 )
                 if save_name:
                     save_config_as(save_name)
+                    save_unnamed_search_as(save_name)
+        # Seed before the switch, while _get_db_path() still resolves to the
+        # outgoing profile's config.
+        seed_search_profile(chosen)
         if load_config(chosen):
             xbmc.executebuiltin(
                 "Skin.SetString(altus_active_widget_config,%s)" % chosen
             )
+            apply_search_profile(chosen)
             generate_and_reload(active_config=chosen)
         else:
             xbmcgui.Dialog().notification(
                 "Altus",
-                "Failed to load config",
+                "Failed to load profile",
                 xbmcgui.NOTIFICATION_ERROR,
                 3000,
             )
@@ -174,8 +238,8 @@ def routing():
         active = get_active_config()
         if not active:
             xbmcgui.Dialog().ok(
-                "Rename Widget Config",
-                "No active config to rename.[CR][CR]Save or create a config first.",
+                "Rename Altus Profile",
+                "No active profile to rename.[CR][CR]Save or create a profile first.",
             )
             return
         new_name = sanitize_config_name(
@@ -186,19 +250,30 @@ def routing():
         existing = list_saved_configs()
         if new_name in existing:
             if not xbmcgui.Dialog().yesno(
-                "Rename Widget Config",
-                "A config named [B]%s[/B] already exists. Overwrite?" % new_name,
+                "Rename Altus Profile",
+                "A profile named [B]%s[/B] already exists. Overwrite?" % new_name,
             ):
                 return
         save_config_as(active)
         if rename_config(active, new_name):
+            # Move the profile's search config and history alongside it. Copy
+            # then delete, matching widget_manager.rename_config, so a failed
+            # copy leaves the original intact. Older profiles may have neither
+            # file yet — missing is not an error.
+            import xbmcvfs
+
+            old_files = _search_profile_files(active)
+            new_files = _search_profile_files(new_name)
+            for old_path, new_path in zip(old_files, new_files):
+                if xbmcvfs.exists(old_path) and xbmcvfs.copy(old_path, new_path):
+                    xbmcvfs.delete(old_path)
             xbmc.executebuiltin(
                 "Skin.SetString(altus_active_widget_config,%s)" % new_name
             )
         else:
             xbmcgui.Dialog().notification(
                 "Altus",
-                "Failed to rename config",
+                "Failed to rename profile",
                 xbmcgui.NOTIFICATION_ERROR,
                 3000,
             )
@@ -206,9 +281,9 @@ def routing():
 
     if mode == "load_default_config":
         if not xbmcgui.Dialog().yesno(
-            "Load Default Config",
-            "Reset to the default widget configuration?[CR][CR]"
-            "This will replace your current widget setup.",
+            "Reset to Defaults",
+            "Reset to the default configuration?[CR][CR]"
+            "This will replace your current home and search widgets.",
         ):
             return
         active = get_active_config()
@@ -216,21 +291,34 @@ def routing():
             save_config_as(active)
         else:
             if xbmcgui.Dialog().yesno(
-                "Load Default Config",
-                "Your current config is unsaved and will be lost.[CR][CR]"
+                "Reset to Defaults",
+                "Your current profile is unsaved and will be lost.[CR][CR]"
                 "Save it first?",
             ):
                 save_name = sanitize_config_name(
-                    xbmcgui.Dialog().input("Enter a name for your current config")
+                    xbmcgui.Dialog().input("Enter a name for your current profile")
                 )
                 if save_name:
                     save_config_as(save_name)
+                    save_unnamed_search_as(save_name)
         cm = ConfigManager()
         for section in cm.get_sections():
             cm.remove_section(section["id"])
         cm.close()
         create_default_sections()
         xbmc.executebuiltin("Skin.Reset(altus_active_widget_config)")
+        # Reset means factory state for the whole profile, so the unnamed
+        # search config goes back to catalog defaults too. ensure_search_config
+        # only seeds an EMPTY db, hence the explicit wipe first. Search history
+        # is user data, not configuration — left alone deliberately.
+        from modules.search_manager.config_manager import (
+            ConfigManager as SearchConfigManager,
+        )
+
+        scm = SearchConfigManager("")
+        scm.delete_all_widgets()
+        scm.close()
+        apply_search_profile("")
         generate_and_reload(active_config="")
         return
 
@@ -238,28 +326,36 @@ def routing():
         active = get_active_config()
         configs = [c for c in list_saved_configs() if c != active]
         if not configs:
-            xbmcgui.Dialog().ok("Delete Widget Config", "No saved configs to delete.")
+            xbmcgui.Dialog().ok("Delete Altus Profile", "No saved profiles to delete.")
             return
-        idx = xbmcgui.Dialog().select("Select config to delete", configs)
+        idx = xbmcgui.Dialog().select("Select profile to delete", configs)
         if idx < 0:
             return
         chosen = configs[idx]
         if not xbmcgui.Dialog().yesno(
-            "Delete Widget Config",
-            "Delete [B]%s[/B]? This cannot be undone." % chosen,
+            "Delete Altus Profile",
+            "Delete [B]%s[/B]? This cannot be undone.[CR][CR]"
+            "Its search widgets and search history are deleted with it." % chosen,
         ):
             return
         if delete_config(chosen):
+            # Take the profile's search config and history with it. Missing
+            # files are fine — older profiles never had them.
+            import xbmcvfs
+
+            for path in _search_profile_files(chosen):
+                if xbmcvfs.exists(path):
+                    xbmcvfs.delete(path)
             xbmcgui.Dialog().notification(
                 "Altus",
-                'Deleted config "%s"' % chosen,
+                'Deleted profile "%s"' % chosen,
                 xbmcgui.NOTIFICATION_INFO,
                 3000,
             )
         else:
             xbmcgui.Dialog().notification(
                 "Altus",
-                "Failed to delete config",
+                "Failed to delete profile",
                 xbmcgui.NOTIFICATION_ERROR,
                 3000,
             )
@@ -276,11 +372,6 @@ def routing():
         cm.close()
         return _init_stacked_widgets(config)
 
-    if mode == "refresh_search_history":
-        from modules.search_utils import SPaths
-
-        return SPaths().refresh_search_history()
-
     if mode == "search_input":
         from modules.search_utils import SPaths
 
@@ -296,15 +387,47 @@ def routing():
 
         return SPaths().re_search()
 
+    if mode == "commit_search_history":
+        from modules.search_utils import SPaths
+
+        return SPaths().commit_live_search_history()
+
+    if mode == "clear_widget_paths":
+        # Force every search widget's content_path to NOOP_URL so they
+        # unmount, without touching altus.search.input.
+        from modules.search_manager.xml_generator import (
+            NOOP_URL,
+            iter_visible_widgets_with_ids,
+        )
+        from modules.monitors.live_search import bump_search_generation
+
+        home = xbmcgui.Window(10000)
+        # Invalidate any staggered path write in flight before clearing, or it
+        # will re-write the widgets it hasn't reached yet over our NOOPs.
+        bump_search_generation()
+        # Order matters: flush stacked children before parents so the child
+        # containers release their resolved items before the parent group
+        # tears down. Otherwise children stay stuck on prior artwork.
+        widgets = list(iter_visible_widgets_with_ids())
+        for list_id, w in widgets:
+            if w.get("is_stacked"):
+                home.setProperty("altus.search.child.%s.path" % list_id, NOOP_URL)
+                home.clearProperty("altus.search.child.%s.label" % list_id)
+        for list_id, _w in widgets:
+            home.setProperty("altus.search.widget.%s.path" % list_id, NOOP_URL)
+        home.clearProperty("altus.search.input.encoded")
+        home.clearProperty("altus.search.input.trakt.encoded")
+        return
+
     if mode == "open_search_window":
         from modules.search_utils import SPaths
 
         return SPaths().open_search_window()
 
-    if mode == "toggle_search_provider":
+    if mode == "toggle_search_filter":
         from modules.search_utils import SPaths
 
-        return SPaths().toggle_search_provider()
+        return SPaths().toggle_search_filter(_get("kind", ""))
 
     if mode == "set_api_key":
         from modules.custom_actions import set_api_key

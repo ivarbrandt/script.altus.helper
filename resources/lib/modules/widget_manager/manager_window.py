@@ -227,7 +227,7 @@ def _friendly(internal_name):
     return internal_name
 
 
-_LOCALIZE_RE = re.compile(r'\$LOCALIZE\[(\d+)\]')
+_LOCALIZE_RE = re.compile(r"\$LOCALIZE\[(\d+)\]")
 
 
 def _resolve_localize(text):
@@ -238,8 +238,6 @@ def _resolve_localize(text):
 def _dim_label(text):
     """Wrap text in a dim color tag for hidden items."""
     return "[COLOR %s]%s[/COLOR]" % (HIDDEN_COLOR, text)
-
-
 
 
 def icon_folder_debounce():
@@ -300,7 +298,9 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
         try:
             return json.loads(data)
         except ValueError as e:
-            xbmc.log("[altus.helper] iconpicker manifest parse failed: %s" % e, xbmc.LOGERROR)
+            xbmc.log(
+                "[altus.helper] iconpicker manifest parse failed: %s" % e, xbmc.LOGERROR
+            )
             return {}
 
     def onInit(self):
@@ -327,9 +327,7 @@ class IconPickerDialog(xbmcgui.WindowXMLDialog):
         folder_path = "iconpicker/monochrome/%s/" % folder
         self.current_icons = list(self.manifest.get(folder, []))
         self.current_folder_idx = idx
-        self.getControl(self.HEADER_ID).setLabel(
-            "Choose icon - %s" % folder
-        )
+        self.getControl(self.HEADER_ID).setLabel("Choose icon - %s" % folder)
         panel = self.getControl(self.PANEL_ID)
         panel.reset()
         items = []
@@ -658,7 +656,14 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             li = section_list.getListItem(i)
             li.setLabel(label)
             # Clear old properties then set new ones
-            for key in ("section_id", "submenu_id", "edit_option", "icon", "hidden", "is_weather"):
+            for key in (
+                "section_id",
+                "submenu_id",
+                "edit_option",
+                "icon",
+                "hidden",
+                "is_weather",
+            ):
                 li.setProperty(key, "")
             for key, val in props.items():
                 li.setProperty(key, val)
@@ -696,9 +701,20 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             header_label = sub.get("label", "")
             header_icon = sub.get("icon", "")
         # Build items: header + indented options
-        items = [("[B]%s[/B]" % header_label, {"edit_option": "", "icon": header_icon, "is_weather": header_is_weather})]
+        items = [
+            (
+                "[B]%s[/B]" % header_label,
+                {
+                    "edit_option": "",
+                    "icon": header_icon,
+                    "is_weather": header_is_weather,
+                },
+            )
+        ]
         for key in menu:
-            items.append(("    %s" % EDIT_MENU_LABELS[key], {"edit_option": key, "icon": ""}))
+            items.append(
+                ("    %s" % EDIT_MENU_LABELS[key], {"edit_option": key, "icon": ""})
+            )
         section_list = self.getControl(SECTION_LIST)
         self._set_list_items(section_list, items)
         section_list.selectItem(1)
@@ -914,7 +930,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         pos_after = None
         if current and current in self.config:
             pos_after = self.config[current]["section"]["position"]
-        icon = "$VAR[WeatherFanartCodeIcon]" if is_weather else result.get("thumbnail", "")
+        icon = (
+            "$VAR[WeatherFanartCodeIcon]" if is_weather else result.get("thumbnail", "")
+        )
         section_id = self.cm.add_section(name=name, onclick=onclick, icon=icon)
         if pos_after is not None:
             self.cm.reorder_section(section_id, pos_after + 1)
@@ -943,7 +961,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         if sid is None:
             return
         name = _resolve_localize(self.config[sid]["section"]["name"])
-        if not self._confirm("Delete '%s' ?[CR][CR][COLOR red][B]WARNING:[/B][/COLOR] This cannot be undone." % name):
+        if not self._confirm(
+            "Delete '%s' ?[CR][CR][COLOR red][B]WARNING:[/B][/COLOR] This cannot be undone."
+            % name
+        ):
             return
         del_idx = self.section_ids.index(sid) if sid in self.section_ids else 0
         self.cm.remove_section(sid)
@@ -1027,7 +1048,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 return None
             return path
         picker = IconPickerDialog(
-            "DialogIconPicker.xml", SKIN_PATH, "default", "1080i",
+            "DialogIconPicker.xml",
+            SKIN_PATH,
+            "default",
+            "1080i",
         )
         picker.doModal()
         result = picker.selected
@@ -1111,9 +1135,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         return None
 
     def _add_submenu(self):
-        result = path_browser.browse(
-            multi_heading="Add multiple submenu items"
-        )
+        result = path_browser.browse(multi_heading="Add multiple submenu items")
         if not result:
             return
         if "multi" in result:
@@ -1143,7 +1165,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                     pos_after = s["position"]
                     break
         icon = result.get("thumbnail", "")
-        new_id = self.cm.add_submenu(self.submenu_section_id, label, onclick=onclick, icon=icon)
+        new_id = self.cm.add_submenu(
+            self.submenu_section_id, label, onclick=onclick, icon=icon
+        )
         if pos_after is not None:
             self.cm.reorder_submenu(new_id, pos_after + 1)
         self.changed = True
@@ -1606,7 +1630,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 return
             new_path = result["path"]
             new_target = result.get("target", widget.get("target", "videos"))
-            default_label = result.get("label", _resolve_localize(widget.get("label", "")))
+            default_label = result.get(
+                "label", _resolve_localize(widget.get("label", ""))
+            )
             new_label = self._input("Widget Label", default_label)
             if not new_label:
                 new_label = default_label or _resolve_localize(widget.get("label", ""))
@@ -1765,7 +1791,10 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 li.setProperty("section_id", str(sid))
                 li.setProperty("hidden", "true" if hidden else "")
                 li.setProperty("icon", section.get("icon", ""))
-                li.setProperty("is_weather", "true" if section.get("name") == "$LOCALIZE[8]" else "")
+                li.setProperty(
+                    "is_weather",
+                    "true" if section.get("name") == "$LOCALIZE[8]" else "",
+                )
             self.section_ids = sorted_ids
             section_list.selectItem(new_idx)
         elif self.reorder_target == "widget":

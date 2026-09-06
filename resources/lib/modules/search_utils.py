@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 
+import time
 import xbmc, xbmcgui, xbmcvfs
 import sqlite3 as database
 from modules import xmls
 from urllib.parse import quote
-from threading import Thread, Event
-from modules.cpath_maker import starting_search_widgets
 
 # from modules.logger import logger
 
@@ -17,6 +16,43 @@ SEARCH_DATABASE_PATH = xbmcvfs.translatePath(
     "special://profile/addon_data/script.altus.helper/spath_cache.db"
 )
 
+
+def profile_history_path(profile):
+    """Path to a named profile's history DB, or the unnamed default."""
+    if profile:
+        return xbmcvfs.translatePath(
+            "special://profile/addon_data/script.altus.helper/"
+            "spath_cache(%s).db" % profile
+        )
+    return SEARCH_DATABASE_PATH
+
+
+def _get_history_db_path(profile=None):
+    """Resolve the history DB for the active profile.
+
+    Search history forks per profile — terms searched under one profile must
+    not appear in another's history list. Path-based like search_config: the
+    active profile name picks the file at connect time, so every search commits
+    straight into that profile's DB and a switch needs no save-back. Every
+    SPaths operation (add, delete-all, fetch) runs against whichever file this
+    returns, so they are all per-profile with no further changes.
+
+    ``profile`` overrides the lookup for routes that just called Skin.SetString
+    — that builtin is async, so reading it back immediately returns the OLD
+    profile and history would be read from the wrong file.
+
+    Imported inside the function: widget_manager.config_manager is the profile
+    spine and importing it at module scope would create a cycle.
+    """
+    if profile is None:
+        try:
+            from modules.widget_manager.config_manager import get_active_config
+
+            profile = get_active_config()
+        except Exception:
+            profile = ""
+    return profile_history_path(profile)
+
 search_history_xml = "script-altus-search_history"
 
 default_xmls = {
@@ -26,9 +62,43 @@ default_xmls = {
 default_path = "addons://sources/video"
 
 
+def _humanize_timestamp(ts):
+    """Render a unix timestamp as a relative phrase ('3 days ago')."""
+    if not ts:
+        return ""
+    diff = int(time.time()) - int(ts)
+    # Bucketed to 10s below a minute. A per-second counter needs a per-second
+    # refresh, and the service loop's 0.2s tick can't hold that phase — the
+    # displayed value skipped seconds. At this granularity a late refresh is
+    # invisible, and it costs 6x fewer DB reads while the search window is open.
+    if diff < 10:
+        return "just now"
+    if diff < 60:
+        return "%d seconds ago" % (diff // 10 * 10)
+    if diff < 3600:
+        n = diff // 60
+        return "%d minute%s ago" % (n, "" if n == 1 else "s")
+    if diff < 86400:
+        n = diff // 3600
+        return "%d hour%s ago" % (n, "" if n == 1 else "s")
+    if diff < 86400 * 7:
+        n = diff // 86400
+        return "%d day%s ago" % (n, "" if n == 1 else "s")
+    if diff < 86400 * 30:
+        n = diff // (86400 * 7)
+        return "%d week%s ago" % (n, "" if n == 1 else "s")
+    if diff < 86400 * 365:
+        n = diff // (86400 * 30)
+        return "%d month%s ago" % (n, "" if n == 1 else "s")
+    n = diff // (86400 * 365)
+    return "%d year%s ago" % (n, "" if n == 1 else "s")
+
+
 class SPaths:
-    def __init__(self, spaths=None):
-        self.connect_database()
+    def __init__(self, spaths=None, profile=None):
+        # profile: explicit override for routes that just called Skin.SetString
+        # (async — see _get_history_db_path). Leave None for normal use.
+        self.connect_database(profile)
         if spaths is None:
             self.spaths = []
         else:
@@ -37,22 +107,55 @@ class SPaths:
         self.home_window = xbmcgui.Window(10000)
         self.max_history_items = 100
 
-    def connect_database(self):
+    def connect_database(self, profile=None):
         if not xbmcvfs.exists(SETTINGS_PATH):
             xbmcvfs.mkdir(SETTINGS_PATH)
-        self.dbcon = database.connect(SEARCH_DATABASE_PATH, timeout=20)
+        self.dbcon = database.connect(_get_history_db_path(profile), timeout=20)
         self.dbcon.execute(
             "CREATE TABLE IF NOT EXISTS spath (spath_id INTEGER PRIMARY KEY AUTOINCREMENT, spath text)"
         )
+        # Schema migration: existing installs may be missing the new columns.
+        cols = [r[1] for r in self.dbcon.execute("PRAGMA table_info(spath)").fetchall()]
+        if "last_searched" not in cols:
+            self.dbcon.execute("ALTER TABLE spath ADD COLUMN last_searched INTEGER")
+        if "search_count" not in cols:
+            self.dbcon.execute(
+                "ALTER TABLE spath ADD COLUMN search_count INTEGER NOT NULL DEFAULT 0"
+            )
+        self.dbcon.commit()
         self.dbcur = self.dbcon.cursor()
 
     def add_spath_to_database(self, spath):
+        """Insert-or-update a search term.
+
+        On first sight: insert with search_count=1 and last_searched=now.
+        On repeat: bump search_count and stamp last_searched=now in place.
+        Returns the spath_id for the stored row.
+
+        Dedup is case-insensitive (COLLATE NOCASE) so 'Harry Potter' and
+        'harry potter' merge into one row. The originally stored capitalization
+        wins — repeats only bump count/last_searched, they don't rewrite spath.
+        """
         self.refresh_spaths = True
-        self.dbcur.execute(
-            "INSERT INTO spath (spath) VALUES (?)",
+        now = int(time.time())
+        existing = self.dbcur.execute(
+            "SELECT spath_id, search_count FROM spath WHERE spath = ? COLLATE NOCASE",
             (spath,),
-        )
+        ).fetchone()
+        if existing:
+            spath_id, count = existing
+            self.dbcur.execute(
+                "UPDATE spath SET search_count = ?, last_searched = ? WHERE spath_id = ?",
+                ((count or 0) + 1, now, spath_id),
+            )
+        else:
+            self.dbcur.execute(
+                "INSERT INTO spath (spath, search_count, last_searched) VALUES (?, 1, ?)",
+                (spath, now),
+            )
+            spath_id = self.dbcur.lastrowid
         self.dbcon.commit()
+        return spath_id
 
     def remove_spath_from_database(self, spath_id):
         self.refresh_spaths = True
@@ -82,7 +185,17 @@ class SPaths:
         for i in range(1, 101):
             self.home_window.clearProperty(f"altus.search.history.{i}")
             self.home_window.clearProperty(f"altus.search.history.{i}.id")
+            self.home_window.clearProperty(f"altus.search.history.{i}.count")
+            self.home_window.clearProperty(f"altus.search.history.{i}.last")
         self.home_window.setProperty("altus.search.history.count", "0")
+        # Reset the live-timestamps cadence signal — without this, the
+        # service tick keeps reading the prior most-recent timestamp and
+        # may stay on the 1s fast-poll cadence with nothing to update.
+        self.home_window.setProperty("altus.search.history.most_recent_ts", "0")
+        # Drop the cross-process dedup sentinel so the user can re-search
+        # the same term immediately after clearing — otherwise the live-
+        # search commit path silently skips the next add.
+        self.home_window.clearProperty("altus.search.last_committed.lower")
         self.home_window.clearProperty("altus.search.input")
         self.home_window.clearProperty("altus.search.input.encoded")
         self.home_window.clearProperty("altus.search.input.trakt.encoded")
@@ -93,8 +206,14 @@ class SPaths:
         return True
 
     def fetch_all_spaths(self):
+        """Return all rows ordered by most-recent-search first.
+
+        Falls back to spath_id DESC for any rows that pre-date the
+        last_searched column (NULL timestamps sort last).
+        """
         results = self.dbcur.execute(
-            "SELECT * FROM spath ORDER BY spath_id DESC"
+            "SELECT spath_id, spath, search_count, last_searched FROM spath "
+            "ORDER BY COALESCE(last_searched, 0) DESC, spath_id DESC"
         ).fetchall()
         return results
 
@@ -105,14 +224,39 @@ class SPaths:
         return result[0] if result else None
 
     def refresh_search_history(self):
-        """Method to refresh search history properties"""
+        """Rewrite all per-history-item window properties from the DB.
+
+        Sets, per index i ∈ 1..max_history_items:
+            altus.search.history.{i}        the search term
+            altus.search.history.{i}.id     spath_id
+            altus.search.history.{i}.count  cumulative search_count
+            altus.search.history.{i}.last   "3 days ago" relative phrase
+        Plus the aggregate altus.search.history.count and the empty-state
+        message.
+        """
         history = self.fetch_all_spaths()
         for i in range(1, self.max_history_items + 1):
             self.home_window.clearProperty(f"altus.search.history.{i}")
             self.home_window.clearProperty(f"altus.search.history.{i}.id")
-        for i, (id, term) in enumerate(history[: self.max_history_items], 1):
+            self.home_window.clearProperty(f"altus.search.history.{i}.count")
+            self.home_window.clearProperty(f"altus.search.history.{i}.last")
+        most_recent_ts = 0
+        for i, row in enumerate(history[: self.max_history_items], 1):
+            spath_id, term, search_count, last_searched = row
             self.home_window.setProperty(f"altus.search.history.{i}", term)
-            self.home_window.setProperty(f"altus.search.history.{i}.id", str(id))
+            self.home_window.setProperty(f"altus.search.history.{i}.id", str(spath_id))
+            self.home_window.setProperty(
+                f"altus.search.history.{i}.count", str(search_count or 0)
+            )
+            self.home_window.setProperty(
+                f"altus.search.history.{i}.last",
+                _humanize_timestamp(last_searched),
+            )
+            if last_searched and int(last_searched) > most_recent_ts:
+                most_recent_ts = int(last_searched)
+        self.home_window.setProperty(
+            "altus.search.history.most_recent_ts", str(most_recent_ts)
+        )
         count = min(len(history), self.max_history_items)
         self.home_window.setProperty("altus.search.history.count", str(count))
         if count == 0:
@@ -123,43 +267,38 @@ class SPaths:
         else:
             self.home_window.clearProperty("altus.search.history.empty")
 
-    def update_search_history_properties(self, search_term, existing_spath_id):
-        """Update search history properties to reflect a new search term. Moves existing terms down and places the new/existing term at the top."""
-        count_str = self.home_window.getProperty("altus.search.history.count")
-        count = int(count_str) if count_str else 0
-        existing_property_index = None
-        for i in range(1, count + 1):
-            if self.home_window.getProperty(f"altus.search.history.{i}") == search_term:
-                existing_property_index = i
-                break
-        if existing_property_index is not None:
-            term_to_move = self.home_window.getProperty(
-                f"altus.search.history.{existing_property_index}"
-            )
-            id_to_move = self.home_window.getProperty(
-                f"altus.search.history.{existing_property_index}.id"
-            )
-            for i in range(existing_property_index, 1, -1):
-                prev_term = self.home_window.getProperty(f"altus.search.history.{i-1}")
-                prev_id = self.home_window.getProperty(f"altus.search.history.{i-1}.id")
-                self.home_window.setProperty(f"altus.search.history.{i}", prev_term)
-                self.home_window.setProperty(f"altus.search.history.{i}.id", prev_id)
-            self.home_window.setProperty("altus.search.history.1", term_to_move)
-            self.home_window.setProperty("altus.search.history.1.id", id_to_move)
-        else:
-            for i in range(min(count, self.max_history_items - 1), 0, -1):
-                term = self.home_window.getProperty(f"altus.search.history.{i}")
-                term_id = self.home_window.getProperty(f"altus.search.history.{i}.id")
-                self.home_window.setProperty(f"altus.search.history.{i+1}", term)
-                self.home_window.setProperty(f"altus.search.history.{i+1}.id", term_id)
-            self.home_window.setProperty("altus.search.history.1", search_term)
+    def refresh_history_timestamps(self):
+        """Update only the .last (humanized timestamp) properties.
+
+        The full refresh_search_history() clears every history.{i} property
+        before re-setting them. List 9000's items use
+        ``<visible>!String.IsEmpty(...history.{i})</visible>``, so during the
+        clear pass every item briefly becomes invisible — Kodi can't hold
+        focus on an invisible item, so a 60s tick fired while the user is
+        on 9000 yanks focus and the only recovery is reopening the window.
+
+        This method only writes ``.last`` for the rows that already exist,
+        never touching the term/id/count properties or the visible-keyed
+        history.{i}, so focus on 9000 is preserved.
+        """
+        history = self.fetch_all_spaths()
+        most_recent_ts = 0
+        for i, row in enumerate(history[: self.max_history_items], 1):
+            _spath_id, _term, _search_count, last_searched = row
             self.home_window.setProperty(
-                "altus.search.history.1.id", str(existing_spath_id)
+                f"altus.search.history.{i}.last",
+                _humanize_timestamp(last_searched),
             )
-            if count < self.max_history_items:
-                self.home_window.setProperty(
-                    "altus.search.history.count", str(count + 1)
-                )
+            if last_searched and int(last_searched) > most_recent_ts:
+                most_recent_ts = int(last_searched)
+        self.home_window.setProperty(
+            "altus.search.history.most_recent_ts", str(most_recent_ts)
+        )
+
+    # update_search_history_properties was an in-place property shifter that
+    # mirrored the old delete+re-add flow. With the upsert + sort-by-timestamp
+    # model, refresh_search_history() rewrites all properties from the DB
+    # canonically — simpler, and it picks up count/last bookkeeping for free.
 
     def open_search_window(self):
         """Open search window and focus appropriate control based on history state"""
@@ -176,10 +315,10 @@ class SPaths:
                 "altus.search.history.empty",
                 "Your search history is empty. Click the search icon to perform a new search.",
             )
-            xbmc.executebuiltin("SetFocus(802)")
+            xbmc.executebuiltin("SetFocus(801)")
         else:
             self.home_window.clearProperty("altus.search.history.empty")
-            xbmc.executebuiltin("SetFocus(802)")
+            xbmc.executebuiltin("SetFocus(801)")
 
     def search_input(self, search_term=None, from_history=False):
         if search_term is None or not search_term.strip():
@@ -194,55 +333,91 @@ class SPaths:
                 return
         self.home_window.setProperty("altus.search.refreshing", "true")
         encoded_search_term = quote(search_term)
-        existing_spath_id = self.check_spath_exists(search_term)
-        if existing_spath_id:
-            self.remove_spath_from_database(existing_spath_id)
+        # Upsert: increments search_count if the term already exists, else
+        # inserts with count=1. Either way, last_searched is bumped to now.
         self.add_spath_to_database(search_term)
-        existing_spath_id = self.check_spath_exists(search_term)
-        self.update_search_history_properties(search_term, existing_spath_id)
+        # Rewrite all history properties from the DB. Cheap (≤100 setProperty
+        # calls) and keeps count/last in lockstep with the DB.
+        self.refresh_search_history()
         self.home_window.setProperty("altus.search.input", search_term)
         self.home_window.setProperty("altus.search.input.encoded", encoded_search_term)
         self.home_window.setProperty(
             "altus.search.input.trakt.encoded", encoded_search_term
         )
-        xbmc.sleep(200)
+        # Confirmed-search path: skip the keystroke debounce. Resolve and
+        # publish widget paths now so SetFocus(2000) downstream (re_search)
+        # has loadable widget containers to land on.
+        from modules.monitors.live_search import (
+            COMMITTED_TERM_PROPERTY,
+            write_resolved_widget_paths,
+        )
+
+        write_resolved_widget_paths(encoded_search_term)
+        # Stamp the cross-process commit sentinel so LiveSearchMonitor's
+        # P8e widget-focus path doesn't double-bump search_count for this
+        # term. Cleared by the monitor when input goes empty.
+        self.home_window.setProperty(COMMITTED_TERM_PROPERTY, search_term.casefold())
         if not from_history:
             xbmc.executebuiltin("SetFocus(2000)")
-        xbmc.sleep(100)
 
-        def load_widgets_and_clear_flag():
-            starting_search_widgets()
-            xbmc.sleep(800)
-            self.home_window.clearProperty("altus.search.refreshing")
+    def commit_live_search_history(self):
+        """Commit the current live-search input to history (P8e).
 
-        Thread(target=load_widgets_and_clear_flag).start()
+        Called from the search results window when the user focuses the
+        widget grouplist (control 2000) — the heuristic that the user has
+        accepted the query enough to interact with results. Empty/whitespace
+        input is a no-op (e.g. user clears, then idly focuses widgets).
+
+        Dedup is handled by add_spath_to_database (COLLATE NOCASE), so
+        repeated focus on the same query just bumps search_count and
+        last_searched without spamming new history rows.
+        """
+        search_term = self.home_window.getProperty("altus.search.input") or ""
+        if not search_term.strip():
+            return
+        self.add_spath_to_database(search_term)
+        self.refresh_search_history()
 
     def re_search(self):
         search_term = xbmc.getInfoLabel("ListItem.Label")
+        # Mark this session as "results came from a history click" so 803's
+        # onleft path (via 802's conditional onfocus) knows to flush the
+        # widgets when the user navigates back. Cleared by 801/802 onfocus
+        # and by the search window's onload.
+        self.home_window.setProperty("altus.search.from", "history")
         self.search_input(search_term, True)
         xbmc.sleep(100)
         xbmc.executebuiltin("SetFocus(9000,0,absolute)")
-        xbmc.sleep(100)
+        xbmc.sleep(300)
         xbmc.executebuiltin("SetFocus(2000)")
 
-    def toggle_search_provider(self):
-        self.home_window.clearProperty("altus.search.input")
-        self.home_window.clearProperty("altus.search.input.encoded")
-        self.home_window.clearProperty("altus.search.input.trakt.encoded")
-        current_provider = xbmc.getInfoLabel("Skin.String(current_search_provider)")
-        if current_provider == "0":
-            next_provider = "1"
-        elif current_provider == "1":
-            next_provider = "3"
-        elif current_provider == "3":
-            next_provider = "2"
-        elif current_provider == "2":
-            next_provider = "4"
-        elif current_provider == "4":
-            next_provider = "0"
+    def toggle_search_filter(self, kind):
+        """Toggle a kind in the live-mode filter pill panel (P8c).
+
+        Property format: ``all`` (or empty) means no filter; otherwise a
+        concatenation of ``@Kind1@@Kind2@`` tokens. ``@`` delimiter is used
+        (not ``[]``) because brackets inside ``String.Contains`` second-arg
+        get parsed by Kodi as grouping expressions, not literal characters,
+        and the contains check then never matches.
+
+        - First toggle from ``all``/empty: replace with ``@kind@``.
+        - Toggling an already-present kind: remove it; if nothing remains,
+          fall back to ``all`` so widgets become visible again.
+        - Toggling a new kind: append ``@kind@``.
+        """
+        if not kind:
+            return
+        cur = self.home_window.getProperty("altus.search.filter.kind") or ""
+        token = "@" + kind + "@"
+        if cur in ("all", ""):
+            new = token
+        elif token in cur:
+            new = cur.replace(token, "")
+            if not new:
+                new = "all"
         else:
-            next_provider = "1"
-        xbmc.executebuiltin(f"Skin.SetString(current_search_provider,{next_provider})")
+            new = cur + token
+        self.home_window.setProperty("altus.search.filter.kind", new)
 
 
 # class SPaths:

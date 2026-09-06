@@ -815,36 +815,56 @@ def starting_widgets():
 
 
 def starting_search_widgets():
+    """Pre-populate stacked search widgets' child label/path properties.
+
+    Mirrors widget_manager._init_stacked_widgets but for the DB-backed
+    search-manager config. For each visible stacked widget, resolves the
+    url_template against the current encoded query, fetches the first
+    item from the resulting plugin URL, and writes
+    ``altus.<list_id>.label`` / ``altus.<list_id>.path`` on Window(11121)
+    so the child container has content the moment its parent reveals it.
+
+    Called from LiveSearchMonitor._do_refresh after the parent path
+    properties have been written. Skips silently when the encoded query
+    isn't set yet.
     """
-    Load stacked widgets for search window.
-    """
-    window = xbmcgui.Window(11121)
-    window.setProperty("altus.search.widgets", "finished")
-    search_widgets = {
-        26020: "$VAR[SearchProviderTRAKTListsVar]",
-        26021: "$VAR[SearchProviderTRAKTListsMoviesVar]",
-        26022: "$VAR[SearchProviderTRAKTListsTVShowsVar]",
-    }
-    for widget_id, widget_path in search_widgets.items():
+    from modules.search_manager.xml_generator import iter_visible_widgets_with_ids
+
+    # Markers duplicated from monitors.live_search to avoid a circular
+    # import (live_search → cpath_maker → live_search). Keep these in
+    # sync with the constants defined there.
+    encoded_marker = "$INFO[Window(home).Property(altus.search.input.encoded)]"
+    trakt_marker = "$INFO[Window(home).Property(altus.search.input.trakt.encoded)]"
+
+    home = xbmcgui.Window(10000)
+    encoded_term = home.getProperty("altus.search.input.encoded")
+    if not encoded_term:
+        return
+    # Child path/label live on Window(home) under altus.search.child.* —
+    # see search_manager/xml_generator comment for the cross-thread crash
+    # that drove this off Window(11121), and for why the prefix is
+    # distinct from home widgets' altus.<id>.* (numeric range collision).
+    home.setProperty("altus.search.widgets", "finished")
+    for list_id, widget in iter_visible_widgets_with_ids():
+        if not widget.get("is_stacked"):
+            continue
+        template = widget.get("url_template") or ""
+        resolved = template.replace(encoded_marker, encoded_term).replace(
+            trakt_marker, encoded_term
+        )
         try:
-            actual_path = xbmc.getInfoLabel(widget_path)
-            if not actual_path:
+            items = files_get_directory(resolved)
+            if not items:
                 continue
-            try:
-                first_item = files_get_directory(actual_path)[0]
-                if not first_item:
-                    continue
-                cpath_label, cpath_path = first_item["label"], first_item["file"]
-                window.setProperty(f"altus.{widget_id}.label", cpath_label)
-                window.setProperty(f"altus.{widget_id}.path", cpath_path)
-            except:
-                continue
-        except:
-            pass
-    try:
-        del window
-    except:
-        pass
+            first_item = items[0]
+            home.setProperty(
+                "altus.search.child.%s.label" % list_id, first_item["label"]
+            )
+            home.setProperty(
+                "altus.search.child.%s.path" % list_id, first_item["file"]
+            )
+        except Exception:
+            continue
 
 
 # def starting_widgets():

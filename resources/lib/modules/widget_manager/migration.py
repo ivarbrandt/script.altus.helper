@@ -241,7 +241,7 @@ def import_from_skin():
         chosen_name, chosen_path, chosen_type_map = available[0]
     else:
         names = [name for name, _, _ in available]
-        idx = xbmcgui.Dialog().select("Select config to import", names)
+        idx = xbmcgui.Dialog().select("Select a skin to import from", names)
         if idx < 0:
             return False
         chosen_name, chosen_path, chosen_type_map = available[idx]
@@ -259,10 +259,10 @@ def import_from_skin():
     else:
         if xbmcgui.Dialog().yesno(
             "Import Widget Config",
-            "Your current config is unsaved and will be lost.[CR][CR]"
+            "Your current profile is unsaved and will be lost.[CR][CR]"
             "Save it first?",
         ):
-            name = sanitize_config_name(xbmcgui.Dialog().input("Enter a name for your current config"))
+            name = sanitize_config_name(xbmcgui.Dialog().input("Enter a name for your current profile"))
             if name:
                 save_config_as(name)
     old_data = _read_old_data(chosen_path)
@@ -276,8 +276,23 @@ def import_from_skin():
     result = _migrate_data(old_data, cm, type_map=chosen_type_map)
     cm.close()
     if result:
+        # Other skins carry no search config, so an import would otherwise fall
+        # through to catalog defaults and silently replace the user's search
+        # widgets. The imported skin contributes home widgets only — seed search
+        # from what's active so it survives the import. Must run BEFORE
+        # Skin.SetString, while the source still resolves to the outgoing
+        # profile.
+        from modules.search_manager.default_config import (
+            apply_profile,
+            seed_profile_config,
+        )
+
+        seed_profile_config(chosen_name)
         xbmc.executebuiltin("Skin.SetString(altus_active_widget_config,%s)" % chosen_name)
         save_config_as(chosen_name)
+        # Name passed explicitly — Skin.SetString above is async, so resolving
+        # it from the skin string would still read the previous profile.
+        apply_profile(chosen_name)
         from modules.widget_manager.xml_generator import generate_and_reload
         generate_and_reload(active_config=chosen_name)
         xbmcgui.Dialog().ok(

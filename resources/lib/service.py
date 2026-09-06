@@ -1,10 +1,12 @@
 import xbmc, xbmcgui, xbmcvfs
 import json
 import os
+import time
 from threading import Thread
 from modules.logger import logger
 from modules.monitors.ratings import RatingsMonitor
 from modules.monitors.image import ImageMonitor, ImageColorAnalyzer, ImageAnalysisConfig
+from modules.monitors.live_search import LiveSearchMonitor
 from modules.databases.ratings import RatingsDatabase
 from modules.config import SETTINGS_PATH
 from modules.select_view import VIEW_PREFERENCES_PATH
@@ -27,14 +29,20 @@ class Service(xbmc.Monitor):
         current_config = ImageAnalysisConfig.from_skin_settings()
         self.image_monitor = ImageMonitor(ImageColorAnalyzer, current_config)
         self.ratings_monitor = RatingsMonitor(RatingsDatabase(), self.home_window)
+        self.live_search_monitor = LiveSearchMonitor()
         self._last_addon_key = None
         self._last_content_type = None
         self._view_prefs_cache = {}
         self._view_prefs_mtime = 0
+        self._last_history_refresh = 0.0
+        self._history_was_sub_minute = False
+        # 10s bucket the sub-minute labels were last rendered for.
+        self._last_history_bucket = 0
 
     def run(self):
         """Start the service and monitor."""
         self.image_monitor.start()
+        self.live_search_monitor.start()
         self._was_on_home = False
         while not self.abortRequested():
             on_home = (
@@ -46,6 +54,7 @@ class Service(xbmc.Monitor):
                 self._check_stacked_widgets(on_home)
             else:
                 self._was_on_home = False
+            self._check_search_history_refresh()
             if self._should_pause():
                 self.waitForAbort(2)
                 continue
@@ -151,6 +160,62 @@ class Service(xbmc.Monitor):
                     xbmc.sleep(20)
                 xbmc.executebuiltin(f'Container.SetViewMode({saved_view["viewid"]})')
 
+    def _check_search_history_refresh(self):
+        """Re-humanize search-history .last labels.
+
+        Default cadence is 60s. While the most recently committed entry is
+        under a minute old, switches to 1s so the seconds counter advances
+        live ("5 seconds ago" → "6 seconds ago"). Reverts to 60s once that
+        entry crosses the minute mark.
+
+        The humanized timestamp is computed once at write time and goes
+        stale immediately. Refresh while a search-relevant window is
+        visible so users see live values.
+        """
+        now = time.monotonic()
+        most_recent_str = self.home_window.getProperty(
+            "altus.search.history.most_recent_ts"
+        )
+        try:
+            most_recent_ts = int(most_recent_str) if most_recent_str else 0
+        except ValueError:
+            most_recent_ts = 0
+        sub_minute = bool(most_recent_ts and (int(time.time()) - most_recent_ts) < 60)
+        # Transition from sub-minute → >=minute needs an immediate refresh so
+        # "59 seconds ago" flips to "1 minute ago" without waiting a full 60s
+        # for the slow-cadence timer to come around.
+        just_crossed_minute = self._history_was_sub_minute and not sub_minute
+        self._history_was_sub_minute = sub_minute
+        if sub_minute:
+            # Keyed to the 10s bucket _humanize_timestamp renders, not to
+            # elapsed time. An elapsed-time interval drifts against the loop's
+            # 0.2s tick, which is what made the old per-second counter skip.
+            # Comparing the bucket itself means each one is rendered once, on
+            # its boundary, however the ticks happen to land.
+            current_bucket = int(time.time()) // 10
+            if not just_crossed_minute and current_bucket == self._last_history_bucket:
+                return
+            self._last_history_bucket = current_bucket
+        elif not just_crossed_minute and now - self._last_history_refresh < 60:
+            # Drift is invisible at minute resolution, so the elapsed check is
+            # fine here and avoids waking for a comparison every tick.
+            return
+        if xbmc.getSkinDir() != "skin.altus":
+            return
+        if not self.get_visibility("Window.IsVisible(1121)"):
+            return
+        count_str = self.home_window.getProperty("altus.search.history.count")
+        try:
+            count = int(count_str) if count_str else 0
+        except ValueError:
+            count = 0
+        self._last_history_refresh = now
+        if count == 0:
+            return
+        from modules.search_utils import SPaths
+
+        SPaths().refresh_history_timestamps()
+
     def _should_pause(self):
         if self.home_window.getProperty("pause_services") == "true":
             return True
@@ -161,7 +226,7 @@ class Service(xbmc.Monitor):
         if not self.get_visibility(
             "Window.IsVisible(videos) | "
             "Window.IsVisible(home) | "
-            "Window.IsVisible(11121) | "
+            "Window.IsVisible(1121) | "
             "Window.IsActive(movieinformation)"
         ):
             return True
