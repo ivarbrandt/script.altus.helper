@@ -241,7 +241,7 @@ def import_from_skin():
         chosen_name, chosen_path, chosen_type_map = available[0]
     else:
         names = [name for name, _, _ in available]
-        idx = xbmcgui.Dialog().select("Select config to import", names)
+        idx = xbmcgui.Dialog().select("Select a skin to import from", names)
         if idx < 0:
             return False
         chosen_name, chosen_path, chosen_type_map = available[idx]
@@ -259,10 +259,10 @@ def import_from_skin():
     else:
         if xbmcgui.Dialog().yesno(
             "Import Widget Config",
-            "Your current config is unsaved and will be lost.[CR][CR]"
+            "Your current profile is unsaved and will be lost.[CR][CR]"
             "Save it first?",
         ):
-            name = sanitize_config_name(xbmcgui.Dialog().input("Enter a name for your current config"))
+            name = sanitize_config_name(xbmcgui.Dialog().input("Enter a name for your current profile"))
             if name:
                 save_config_as(name)
     old_data = _read_old_data(chosen_path)

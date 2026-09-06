@@ -146,15 +146,15 @@ def routing():
 
     if mode == "new_widget_config":
         name = sanitize_config_name(
-            xbmcgui.Dialog().input("Enter a name for the new config")
+            xbmcgui.Dialog().input("Enter a name for the new profile")
         )
         if not name:
             return
         existing = list_saved_configs()
         if name in existing:
             if not xbmcgui.Dialog().yesno(
-                "New Widget Config",
-                "A config named [B]%s[/B] already exists. Overwrite?" % name,
+                "New Altus Profile",
+                "A profile named [B]%s[/B] already exists. Overwrite?" % name,
             ):
                 return
         # Auto-save current config before switching
@@ -163,12 +163,12 @@ def routing():
             save_config_as(active)
         else:
             if xbmcgui.Dialog().yesno(
-                "New Widget Config",
-                "Your current config is unsaved and will be lost.[CR][CR]"
+                "New Altus Profile",
+                "Your current profile is unsaved and will be lost.[CR][CR]"
                 "Save it first?",
             ):
                 save_name = sanitize_config_name(
-                    xbmcgui.Dialog().input("Enter a name for your current config")
+                    xbmcgui.Dialog().input("Enter a name for your current profile")
                 )
                 if save_name:
                     save_config_as(save_name)
@@ -193,11 +193,11 @@ def routing():
         configs = [c for c in list_saved_configs() if c != active]
         if not configs:
             xbmcgui.Dialog().ok(
-                "Load Widget Config",
-                "No other saved configs found.[CR][CR]" "Create a new config first.",
+                "Switch Altus Profile",
+                "No other saved profiles found.[CR][CR]" "Create a new profile first.",
             )
             return
-        idx = xbmcgui.Dialog().select("Select config to load", configs)
+        idx = xbmcgui.Dialog().select("Select profile to switch to", configs)
         if idx < 0:
             return
         chosen = configs[idx]
@@ -206,12 +206,12 @@ def routing():
             save_config_as(active)
         else:
             if xbmcgui.Dialog().yesno(
-                "Load Widget Config",
-                "Your current config is unsaved and will be lost.[CR][CR]"
+                "Switch Altus Profile",
+                "Your current profile is unsaved and will be lost.[CR][CR]"
                 "Save it first?",
             ):
                 save_name = sanitize_config_name(
-                    xbmcgui.Dialog().input("Enter a name for your current config")
+                    xbmcgui.Dialog().input("Enter a name for your current profile")
                 )
                 if save_name:
                     save_config_as(save_name)
@@ -228,7 +228,7 @@ def routing():
         else:
             xbmcgui.Dialog().notification(
                 "Altus",
-                "Failed to load config",
+                "Failed to load profile",
                 xbmcgui.NOTIFICATION_ERROR,
                 3000,
             )
@@ -238,8 +238,8 @@ def routing():
         active = get_active_config()
         if not active:
             xbmcgui.Dialog().ok(
-                "Rename Widget Config",
-                "No active config to rename.[CR][CR]Save or create a config first.",
+                "Rename Altus Profile",
+                "No active profile to rename.[CR][CR]Save or create a profile first.",
             )
             return
         new_name = sanitize_config_name(
@@ -250,8 +250,8 @@ def routing():
         existing = list_saved_configs()
         if new_name in existing:
             if not xbmcgui.Dialog().yesno(
-                "Rename Widget Config",
-                "A config named [B]%s[/B] already exists. Overwrite?" % new_name,
+                "Rename Altus Profile",
+                "A profile named [B]%s[/B] already exists. Overwrite?" % new_name,
             ):
                 return
         save_config_as(active)
@@ -273,7 +273,7 @@ def routing():
         else:
             xbmcgui.Dialog().notification(
                 "Altus",
-                "Failed to rename config",
+                "Failed to rename profile",
                 xbmcgui.NOTIFICATION_ERROR,
                 3000,
             )
@@ -281,9 +281,9 @@ def routing():
 
     if mode == "load_default_config":
         if not xbmcgui.Dialog().yesno(
-            "Load Default Config",
-            "Reset to the default widget configuration?[CR][CR]"
-            "This will replace your current widget setup.",
+            "Reset to Defaults",
+            "Reset to the default configuration?[CR][CR]"
+            "This will replace your current home and search widgets.",
         ):
             return
         active = get_active_config()
@@ -291,12 +291,12 @@ def routing():
             save_config_as(active)
         else:
             if xbmcgui.Dialog().yesno(
-                "Load Default Config",
-                "Your current config is unsaved and will be lost.[CR][CR]"
+                "Reset to Defaults",
+                "Your current profile is unsaved and will be lost.[CR][CR]"
                 "Save it first?",
             ):
                 save_name = sanitize_config_name(
-                    xbmcgui.Dialog().input("Enter a name for your current config")
+                    xbmcgui.Dialog().input("Enter a name for your current profile")
                 )
                 if save_name:
                     save_config_as(save_name)
@@ -326,15 +326,16 @@ def routing():
         active = get_active_config()
         configs = [c for c in list_saved_configs() if c != active]
         if not configs:
-            xbmcgui.Dialog().ok("Delete Widget Config", "No saved configs to delete.")
+            xbmcgui.Dialog().ok("Delete Altus Profile", "No saved profiles to delete.")
             return
-        idx = xbmcgui.Dialog().select("Select config to delete", configs)
+        idx = xbmcgui.Dialog().select("Select profile to delete", configs)
         if idx < 0:
             return
         chosen = configs[idx]
         if not xbmcgui.Dialog().yesno(
-            "Delete Widget Config",
-            "Delete [B]%s[/B]? This cannot be undone." % chosen,
+            "Delete Altus Profile",
+            "Delete [B]%s[/B]? This cannot be undone.[CR][CR]"
+            "Its search widgets and search history are deleted with it." % chosen,
         ):
             return
         if delete_config(chosen):
@@ -347,14 +348,14 @@ def routing():
                     xbmcvfs.delete(path)
             xbmcgui.Dialog().notification(
                 "Altus",
-                'Deleted config "%s"' % chosen,
+                'Deleted profile "%s"' % chosen,
                 xbmcgui.NOTIFICATION_INFO,
                 3000,
             )
         else:
             xbmcgui.Dialog().notification(
                 "Altus",
-                "Failed to delete config",
+                "Failed to delete profile",
                 xbmcgui.NOTIFICATION_ERROR,
                 3000,
             )
