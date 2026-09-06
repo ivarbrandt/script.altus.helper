@@ -624,8 +624,15 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
 
     def _on_add(self):
         # Top-level chooser: where does the new widget come from?
-        # Auto-discover is hidden until it actually probes addons — an entry
-        # that only announces itself as unfinished is worse than no entry.
+        # There is deliberately no auto-discover option. Kodi's `provides`
+        # declares media types (video/audio/image/executable/game), never
+        # capabilities, so there is nothing to detect. Probing URLs fails too:
+        # every addon exposes a prompt route in its menus (umbrella
+        # `movieSearch`, fen `get_search_term`) that is a different function
+        # from the injectable one Altus needs (`movieSearchterm&name=`,
+        # `build_movie_list&action=tmdb_movies_search&query=`), and the two are
+        # not derivable from each other. The catalog is the answer; adding an
+        # entry there is a five-minute data change.
         idx = xbmcgui.Dialog().select(
             "Add Search Widget",
             [
