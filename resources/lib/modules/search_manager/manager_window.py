@@ -624,28 +624,21 @@ class SearchManagerDialog(xbmcgui.WindowXMLDialog):
 
     def _on_add(self):
         # Top-level chooser: where does the new widget come from?
+        # Auto-discover is hidden until it actually probes addons — an entry
+        # that only announces itself as unfinished is worse than no entry.
         idx = xbmcgui.Dialog().select(
             "Add Search Widget",
             [
                 "Preset paths",
                 "Custom widget...",
-                "Auto-discover (experimental)",
             ],
         )
         if idx < 0:
             return
         if idx == 0:
             new_id = self._pick_preset_widget()
-        elif idx == 1:
-            new_id = self._build_custom_widget()
         else:
-            xbmcgui.Dialog().notification(
-                "Auto-discover",
-                "Coming in P11",
-                xbmcgui.NOTIFICATION_INFO,
-                2500,
-            )
-            return
+            new_id = self._build_custom_widget()
         if new_id is None:
             return
         self._finalize_add(new_id)

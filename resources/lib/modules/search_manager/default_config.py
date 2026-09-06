@@ -4,8 +4,9 @@ First-run default population for the search-widget DB.
 
 Seeds ``search_config.db`` with the eight library catalog entries (no plugin
 providers — those are opt-in via Preset paths in the Add dialog). Mirrors
-``widget_manager.default_config`` in shape: an empty DB always gets seeded.
-P10 profiles will be the way users preserve a deliberately-empty config.
+``widget_manager.default_config`` in shape: an empty DB always gets seeded,
+so a deliberately-empty config is preserved by giving it a profile rather
+than by leaving the unnamed DB empty.
 """
 
 from modules.search_manager.catalog import CATALOG
