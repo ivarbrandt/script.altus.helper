@@ -21,8 +21,21 @@ from modules.widget_manager.xml_generator import (
 )
 from modules.widget_manager.default_config import create_default_sections
 from modules.widget_manager.migration import migrate, import_from_skin
+from modules.search_manager.default_config import (
+    apply_profile as apply_search_profile,
+    seed_profile_config as seed_search_profile,
+    save_unnamed_as as save_unnamed_search_as,
+)
 
 # from modules.logger import logger
+
+
+def _search_profile_files(profile):
+    """(search_config, search_history) paths for a profile name."""
+    from modules.search_manager.config_manager import profile_db_path
+    from modules.search_utils import profile_history_path
+
+    return profile_db_path(profile), profile_history_path(profile)
 
 
 def routing():
@@ -159,6 +172,7 @@ def routing():
                 )
                 if save_name:
                     save_config_as(save_name)
+                    save_unnamed_search_as(save_name)
         # Wipe current config and create defaults
         cm = ConfigManager()
         for section in cm.get_sections():
@@ -168,6 +182,9 @@ def routing():
         # Set new profile as active and save it
         xbmc.executebuiltin("Skin.SetString(altus_active_widget_config,%s)" % name)
         save_config_as(name)
+        # New profile: catalog-default search widgets, empty history (its
+        # spath_cache file doesn't exist yet and is created blank on first use).
+        apply_search_profile(name)
         generate_and_reload(active_config=name)
         return
 
@@ -198,10 +215,15 @@ def routing():
                 )
                 if save_name:
                     save_config_as(save_name)
+                    save_unnamed_search_as(save_name)
+        # Seed before the switch, while _get_db_path() still resolves to the
+        # outgoing profile's config.
+        seed_search_profile(chosen)
         if load_config(chosen):
             xbmc.executebuiltin(
                 "Skin.SetString(altus_active_widget_config,%s)" % chosen
             )
+            apply_search_profile(chosen)
             generate_and_reload(active_config=chosen)
         else:
             xbmcgui.Dialog().notification(
@@ -234,6 +256,17 @@ def routing():
                 return
         save_config_as(active)
         if rename_config(active, new_name):
+            # Move the profile's search config and history alongside it. Copy
+            # then delete, matching widget_manager.rename_config, so a failed
+            # copy leaves the original intact. Older profiles may have neither
+            # file yet — missing is not an error.
+            import xbmcvfs
+
+            old_files = _search_profile_files(active)
+            new_files = _search_profile_files(new_name)
+            for old_path, new_path in zip(old_files, new_files):
+                if xbmcvfs.exists(old_path) and xbmcvfs.copy(old_path, new_path):
+                    xbmcvfs.delete(old_path)
             xbmc.executebuiltin(
                 "Skin.SetString(altus_active_widget_config,%s)" % new_name
             )
@@ -267,12 +300,25 @@ def routing():
                 )
                 if save_name:
                     save_config_as(save_name)
+                    save_unnamed_search_as(save_name)
         cm = ConfigManager()
         for section in cm.get_sections():
             cm.remove_section(section["id"])
         cm.close()
         create_default_sections()
         xbmc.executebuiltin("Skin.Reset(altus_active_widget_config)")
+        # Reset means factory state for the whole profile, so the unnamed
+        # search config goes back to catalog defaults too. ensure_search_config
+        # only seeds an EMPTY db, hence the explicit wipe first. Search history
+        # is user data, not configuration — left alone deliberately.
+        from modules.search_manager.config_manager import (
+            ConfigManager as SearchConfigManager,
+        )
+
+        scm = SearchConfigManager("")
+        scm.delete_all_widgets()
+        scm.close()
+        apply_search_profile("")
         generate_and_reload(active_config="")
         return
 
@@ -292,6 +338,13 @@ def routing():
         ):
             return
         if delete_config(chosen):
+            # Take the profile's search config and history with it. Missing
+            # files are fine — older profiles never had them.
+            import xbmcvfs
+
+            for path in _search_profile_files(chosen):
+                if xbmcvfs.exists(path):
+                    xbmcvfs.delete(path)
             xbmcgui.Dialog().notification(
                 "Altus",
                 'Deleted config "%s"' % chosen,

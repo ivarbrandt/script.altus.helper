@@ -16,6 +16,43 @@ SEARCH_DATABASE_PATH = xbmcvfs.translatePath(
     "special://profile/addon_data/script.altus.helper/spath_cache.db"
 )
 
+
+def profile_history_path(profile):
+    """Path to a named profile's history DB, or the unnamed default."""
+    if profile:
+        return xbmcvfs.translatePath(
+            "special://profile/addon_data/script.altus.helper/"
+            "spath_cache(%s).db" % profile
+        )
+    return SEARCH_DATABASE_PATH
+
+
+def _get_history_db_path(profile=None):
+    """Resolve the history DB for the active profile.
+
+    Search history forks per profile — terms searched under one profile must
+    not appear in another's history list. Path-based like search_config: the
+    active profile name picks the file at connect time, so every search commits
+    straight into that profile's DB and a switch needs no save-back. Every
+    SPaths operation (add, delete-all, fetch) runs against whichever file this
+    returns, so they are all per-profile with no further changes.
+
+    ``profile`` overrides the lookup for routes that just called Skin.SetString
+    — that builtin is async, so reading it back immediately returns the OLD
+    profile and history would be read from the wrong file.
+
+    Imported inside the function: widget_manager.config_manager is the profile
+    spine and importing it at module scope would create a cycle.
+    """
+    if profile is None:
+        try:
+            from modules.widget_manager.config_manager import get_active_config
+
+            profile = get_active_config()
+        except Exception:
+            profile = ""
+    return profile_history_path(profile)
+
 search_history_xml = "script-altus-search_history"
 
 default_xmls = {
@@ -58,8 +95,10 @@ def _humanize_timestamp(ts):
 
 
 class SPaths:
-    def __init__(self, spaths=None):
-        self.connect_database()
+    def __init__(self, spaths=None, profile=None):
+        # profile: explicit override for routes that just called Skin.SetString
+        # (async — see _get_history_db_path). Leave None for normal use.
+        self.connect_database(profile)
         if spaths is None:
             self.spaths = []
         else:
@@ -68,10 +107,10 @@ class SPaths:
         self.home_window = xbmcgui.Window(10000)
         self.max_history_items = 100
 
-    def connect_database(self):
+    def connect_database(self, profile=None):
         if not xbmcvfs.exists(SETTINGS_PATH):
             xbmcvfs.mkdir(SETTINGS_PATH)
-        self.dbcon = database.connect(SEARCH_DATABASE_PATH, timeout=20)
+        self.dbcon = database.connect(_get_history_db_path(profile), timeout=20)
         self.dbcon.execute(
             "CREATE TABLE IF NOT EXISTS spath (spath_id INTEGER PRIMARY KEY AUTOINCREMENT, spath text)"
         )

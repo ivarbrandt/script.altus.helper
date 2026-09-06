@@ -60,6 +60,26 @@ def bump_search_generation():
     home.setProperty(GENERATION_PROPERTY, "%.6f" % time.time())
 
 
+# Signals that the set of search widgets changed — a profile switch, or a save
+# in the Search Manager. _widget_cache is loaded once in __init__, and
+# service.py is registered as xbmc.service start="startup", so ReloadSkin()
+# does not restart it and the cache would otherwise stay stale until Kodi does.
+#
+# Searching itself is unaffected: write_resolved_widget_paths() re-reads the DB
+# through iter_visible_widgets_with_ids() on every refresh. What goes stale is
+# the id set — _write_resting_paths (which widgets get flushed to NOOP) and
+# _widget_focus_ids (the history-commit trigger and the IsUpdating gate). After
+# a profile switch those ids belong to the previous profile, so a clear would
+# miss the current widgets and leave them populated.
+WIDGET_CACHE_GENERATION_PROPERTY = "altus.search.widget_cache.generation"
+
+
+def bump_widget_cache_generation():
+    """Tell LiveSearchMonitor to reload its widget list from the DB."""
+    home = xbmcgui.Window(10000)
+    home.setProperty(WIDGET_CACHE_GENERATION_PROPERTY, "%.6f" % time.time())
+
+
 def write_resolved_widget_paths(encoded_term):
     """Resolve every visible search widget's url_template against the given
     URL-encoded query and publish to each widget's path property. Used by
@@ -127,7 +147,16 @@ class LiveSearchMonitor(threading.Thread):
         # When the fire first started waiting on still-loading widgets, so the
         # MAX_DEFER_MS ceiling can be measured. None while not deferring.
         self._defer_since = None
+        # Whichever profile is active when profile support first ships never
+        # passes through the switch route, so it would otherwise open a
+        # search_config(NAME).db that doesn't exist — SQLite creates it empty
+        # and the search window comes up with no widgets at all. Seeding here
+        # runs once per Kodi session and no-ops as soon as the file exists.
+        self._seed_active_profile_search_config()
         self._widget_cache = self._load_widget_cache()
+        self._cache_generation = self.home_window.getProperty(
+            WIDGET_CACHE_GENERATION_PROPERTY
+        )
         from modules.search_manager.xml_generator import INITIAL_PATH
         self._write_resting_paths(INITIAL_PATH)
         # Last term committed to history this session — guards against the
@@ -135,6 +164,18 @@ class LiveSearchMonitor(threading.Thread):
         # range. add_spath_to_database is idempotent (COLLATE NOCASE) but
         # refresh_search_history rewrites ~100 properties, so dedup pays off.
         self._last_committed_term = None
+
+    def _seed_active_profile_search_config(self):
+        """Give the active profile a search config if it has none yet."""
+        try:
+            from modules.widget_manager.config_manager import get_active_config
+            from modules.search_manager.default_config import seed_profile_config
+
+            active = get_active_config()
+            if active:
+                seed_profile_config(active, from_profile="")
+        except Exception:
+            pass
 
     def _load_widget_cache(self):
         """Snapshot of (list_id, url_template) for every visible search
@@ -268,6 +309,20 @@ class LiveSearchMonitor(threading.Thread):
 
     def _tick(self):
         activity = False
+        # Reload the id set when the search widgets change under us — a profile
+        # switch or a Search Manager save. Deferred while a round is in flight
+        # so it can't change mid-fetch; retried every tick until it settles.
+        # Resting paths are rewritten because the new set may not include ids
+        # the old one did, which would otherwise stay populated.
+        cache_gen = self.home_window.getProperty(WIDGET_CACHE_GENERATION_PROPERTY)
+        if cache_gen != self._cache_generation and not self._refreshing:
+            self._cache_generation = cache_gen
+            bump_search_generation()
+            self._widget_cache = self._load_widget_cache()
+            from modules.search_manager.xml_generator import INITIAL_PATH
+
+            self._write_resting_paths(INITIAL_PATH)
+            self._pending = False
         # Gate ONLY the mirror on 9100 being addressable. Everything below —
         # input bookkeeping, the clear path, focus handling — must keep running
         # when it isn't. Skipping the whole tick lets altus.search.input drift

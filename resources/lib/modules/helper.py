@@ -4,7 +4,7 @@ import os
 import hashlib
 import urllib.request as urllib
 from .config import RATINGS_DATABASE_PATH
-from .search_utils import SEARCH_DATABASE_PATH
+from .search_utils import _get_history_db_path
 
 ADDON = xbmcaddon.Addon()
 ADDON_ID = ADDON.getAddonInfo("id")
@@ -105,8 +105,11 @@ def calculate_cache_size():
         )
 
     # Calculate ratings database size
-    if os.path.exists(SEARCH_DATABASE_PATH):
-        search_history_db_size = os.path.getsize(SEARCH_DATABASE_PATH)
+    # Active profile's history file, not the unnamed default — each profile
+    # keeps its own, so the reported size must follow the active one.
+    search_db_path = _get_history_db_path()
+    if os.path.exists(search_db_path):
+        search_history_db_size = os.path.getsize(search_db_path)
         search_history_db_mb = search_history_db_size / (1024 * 1024)
         xbmc.executebuiltin(
             f"Skin.SetString(SearchHistoryDatabaseSize,{search_history_db_mb:.2f} MB)"

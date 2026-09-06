@@ -21,8 +21,9 @@ Schema:
         stacked_type    TEXT                        -- child include base name
     )
 
-Profiles (deferred until P10) will swap ``_get_db_path()`` for a profile-aware
-lookup. All callers go through that function so the swap is one-line.
+Profiles are resolved in ``_get_db_path()``; all callers go through it, so the
+active profile selects the file at connect time. See that function for why this
+side is path-based while widget config is copy-based.
 """
 
 import sqlite3
@@ -33,19 +34,50 @@ _ADDON_DATA = "special://profile/addon_data/script.altus.helper/"
 _DEFAULT_DB = _ADDON_DATA + "search_config.db"
 
 
-def _get_db_path():
-    """Returns the resolved path to the active search_config DB.
-
-    P10 will branch on ``Skin.String(altus_active_search_config)`` here. For
-    P2-P9, we always use the unnamed default DB.
-    """
-    if not xbmcvfs.exists(_ADDON_DATA):
-        xbmcvfs.mkdir(_ADDON_DATA)
+def profile_db_path(profile):
+    """Path to a named profile's search config, or the unnamed default."""
+    if profile:
+        return xbmcvfs.translatePath("%ssearch_config(%s).db" % (_ADDON_DATA, profile))
     return xbmcvfs.translatePath(_DEFAULT_DB)
 
 
-def _connect():
-    con = sqlite3.connect(_get_db_path(), timeout=20)
+def _get_db_path(profile=None):
+    """Returns the resolved path to the active search_config DB.
+
+    Profiles are path-based here, not copy-based like widget config: the active
+    profile name selects which file to open, so nothing is copied on a switch
+    and there is no window in which a half-applied switch could mix two
+    profiles' widgets. One profile covers home widgets, search widgets and
+    search history; widget_config is the spine that defines which profiles
+    exist, so the name comes from there rather than a second skin string.
+
+    ``profile`` overrides the lookup and must be passed by any route that has
+    just called Skin.SetString. That builtin is async, so reading the string
+    back immediately still returns the OLD profile and every DB access would
+    land in the wrong file. Same reason widget_manager's generate_and_reload
+    takes active_config.
+    """
+    if not xbmcvfs.exists(_ADDON_DATA):
+        xbmcvfs.mkdir(_ADDON_DATA)
+    return profile_db_path(_active_profile() if profile is None else profile)
+
+
+def _active_profile():
+    """Active profile name, or "" when running the unnamed default config.
+
+    Imported inside the function: widget_manager.config_manager is the profile
+    spine and importing it at module scope would create a cycle.
+    """
+    try:
+        from modules.widget_manager.config_manager import get_active_config
+
+        return get_active_config()
+    except Exception:
+        return ""
+
+
+def _connect(profile=None):
+    con = sqlite3.connect(_get_db_path(profile), timeout=20)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     return con
@@ -80,8 +112,10 @@ class ConfigManager:
     regenerate, catalog add) instantiate, mutate, close.
     """
 
-    def __init__(self):
-        self.con = _connect()
+    def __init__(self, profile=None):
+        # profile: explicit override for routes that just called Skin.SetString
+        # (async — see _get_db_path). Leave None for normal use.
+        self.con = _connect(profile)
         _ensure_schema(self.con)
         self.cur = self.con.cursor()
 
@@ -193,6 +227,16 @@ class ConfigManager:
         self.cur.execute("DELETE FROM search_widget WHERE id = ?", (widget_id,))
         self.con.commit()
         self._reorder()
+
+    def delete_all_widgets(self):
+        """Empty the config so ensure_search_config() will reseed it.
+
+        Used by the Reset route: ensure_search_config() only seeds when the DB
+        is empty, so a reset has to clear first. No _reorder() — there is
+        nothing left to renumber.
+        """
+        self.cur.execute("DELETE FROM search_widget")
+        self.con.commit()
 
     # ----------------------------------------------------------------- order
 

@@ -70,12 +70,16 @@ def widget_path_property(list_id):
     return "altus.search.widget.%s.path" % list_id
 
 
-def iter_visible_widgets_with_ids():
+def iter_visible_widgets_with_ids(profile=None):
     """Yield (list_id, widget_row) for every visible widget, in the same order
     and with the same id allocation that ``_build_xml`` uses. Single source of
     truth for the parent list_id mapping; consumed by both xml_generator (for
-    XML emit) and live_search.py (for path-property writes)."""
-    cm = ConfigManager()
+    XML emit) and live_search.py (for path-property writes).
+
+    ``profile`` is only needed when generating XML for a profile that was just
+    switched to — Skin.SetString is async, so the default lookup would still
+    return the previous profile. Runtime callers leave it None."""
+    cm = ConfigManager(profile)
     try:
         widgets = cm.get_all_widgets()
     finally:
@@ -201,7 +205,7 @@ def _widget_block(widget, list_id):
     return parent + child
 
 
-def _build_xml():
+def _build_xml(profile=None):
     """Compose the full XML document. Hidden widgets are skipped here so the
     generated file never carries dead weight."""
     parts = [
@@ -209,7 +213,7 @@ def _build_xml():
         '<includes>\n',
         f'  <include name="{INCLUDE_NAME}">\n',
     ]
-    for list_id, w in iter_visible_widgets_with_ids():
+    for list_id, w in iter_visible_widgets_with_ids(profile):
         parts.append(_widget_block(w, list_id))
     parts.append('  </include>\n')
     parts.append('</includes>\n')
@@ -276,24 +280,33 @@ def generate_and_reload(active_config=None, reload_skin=True):
     """Read DB → render XML → write to skin/xml/ → reload skin.
 
     Args:
-        active_config: reserved for P10 profile support; passed through to
-            avoid the async ``Skin.SetString`` race that auto-save would hit
-            otherwise. Currently unused.
+        active_config: profile whose config to render. Pass this from routes
+            that just called ``Skin.SetString`` — the builtin is async, so
+            resolving the profile from the skin string here would still read
+            the OLD one and emit the previous profile's widgets. No auto-save
+            counterpart is needed on this side: search profiles are path-based,
+            so the DB written during editing IS the profile's file.
         reload_skin: set False from tests/scripts that just want the file
             written without a skin reload.
 
     Returns:
         Number of visible widgets emitted.
     """
-    cm = ConfigManager()
+    cm = ConfigManager(active_config)
     widgets = cm.get_all_widgets()
     kinds = cm.get_distinct_visible_kinds()
     cm.close()
 
-    xml = _build_xml()
+    xml = _build_xml(active_config)
     path = xbmcvfs.translatePath(GENERATED_PATH)
     with xbmcvfs.File(path, "w") as f:
         f.write(xml)
+
+    # The widget set just changed on disk. LiveSearchMonitor caches it at
+    # startup and ReloadSkin doesn't restart the service, so tell it to reload.
+    from modules.monitors.live_search import bump_widget_cache_generation
+
+    bump_widget_cache_generation()
 
     filter_xml = _build_filter_xml(kinds)
     filter_path = xbmcvfs.translatePath(FILTER_GENERATED_PATH)
