@@ -208,11 +208,47 @@ class RatingsMonitor:
         """Get metadata for the current item."""
         dbtype = self.get_infolabel("ListItem.DBTYPE").lower()
         path = self.get_infolabel("ListItem.Path")
-        if dbtype in ["movie", "tvshow"]:
+        if dbtype in ["movie", "tvshow", "episode", "season"]:
+            # Published for the skin because ListItem/Container infolabels do not
+            # resolve inside DialogContextMenu over Home — only Window(Home)
+            # properties survive. Every consumer already excludes season/episode
+            # explicitly, so widening past movie/tvshow changes nothing for them.
             self.home_window.setProperty("CurrentDBType", dbtype)
+            if dbtype == "season":
+                poster = self.get_infolabel("ListItem.Art(tvshow.poster)")
+            elif dbtype == "episode":
+                poster = self.get_infolabel("ListItem.Art(season.poster)")
+            else:
+                poster = self.get_infolabel("ListItem.Art(poster)")
+            if not poster:
+                poster = self.get_infolabel("ListItem.Art(poster)")
+            self.home_window.setProperty("altus.ctx.poster", poster)
+            # Raw parts only — the skin composes them so colours and separators
+            # stay in ContextMenuTitleVar rather than being baked in here.
+            self.home_window.setProperty(
+                "altus.ctx.title", self.get_infolabel("ListItem.Title")
+            )
+            self.home_window.setProperty(
+                "altus.ctx.tvshowtitle", self.get_infolabel("ListItem.TVShowTitle")
+            )
+            if dbtype == "episode":
+                self.home_window.setProperty(
+                    "altus.ctx.season", self.get_infolabel("ListItem.Season")
+                )
+                self.home_window.setProperty(
+                    "altus.ctx.episode", self.get_infolabel("ListItem.Episode")
+                )
+            else:
+                self.home_window.clearProperty("altus.ctx.season")
+                self.home_window.clearProperty("altus.ctx.episode")
         else:
             if not xbmc.getCondVisibility("Window.IsVisible(contextmenu) | Window.IsVisible(movieinformation)"):
                 self.home_window.clearProperty("CurrentDBType")
+                self.home_window.clearProperty("altus.ctx.poster")
+                self.home_window.clearProperty("altus.ctx.title")
+                self.home_window.clearProperty("altus.ctx.tvshowtitle")
+                self.home_window.clearProperty("altus.ctx.season")
+                self.home_window.clearProperty("altus.ctx.episode")
         if not (dbtype in ["movie", "tvshow", "episode", "season"] or
             path.startswith("plugin://plugin.video.mediafusion")):
             return None
