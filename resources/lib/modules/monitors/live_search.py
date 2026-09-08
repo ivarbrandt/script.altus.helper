@@ -5,7 +5,18 @@ import xbmc
 import xbmcgui
 
 DEBOUNCE_MS = 1000
-POLL_MS = 50
+# Poll rate while window 1121 is up. Half of DEBOUNCE_MS, which is as fine as
+# this loop can usefully be: the value it samples comes from
+# Control.GetLabel(9100), and setText -> getInfoLabel carries its own ~80ms lag,
+# so anything faster re-reads a value that cannot have changed. The old 50ms
+# cost 20 getCondVisibility calls a second — each taking the graphics lock the
+# render thread needs — everywhere in the skin, not just in search.
+POLL_MS = 500
+# Poll rate everywhere else. The service is only useful while 1121 is open, so
+# outside it this loop just keeps its bookkeeping warm.
+IDLE_POLL_MS = 2000
+# Set on load / cleared on unload by Custom_1121_SearchResults.xml.
+SEARCH_ACTIVE_PROPERTY = "altus.search.window_active"
 # Tail buffer after the containers finish, not the throttle itself — the wait
 # for IsUpdating to clear is what actually spaces rounds apart.
 COOLDOWN_MS = 300
@@ -269,10 +280,26 @@ class LiveSearchMonitor(threading.Thread):
         except ValueError:
             return 0
 
+    def _poll_interval(self):
+        """POLL_MS while 1121 is up, IDLE_POLL_MS otherwise.
+
+        Driven by a property that Custom_1121_SearchResults.xml sets on load and
+        clears on unload. A plain getProperty is a dictionary lookup on the
+        window; getCondVisibility would evaluate a boolean against GUI state
+        under the graphics lock, which is the cost this whole change exists to
+        remove. NotifyAll from skin XML does not reach onNotification, so the
+        property is the only working channel.
+        """
+        return (
+            POLL_MS
+            if self.home_window.getProperty(SEARCH_ACTIVE_PROPERTY)
+            else IDLE_POLL_MS
+        )
+
     def run(self):
         while not self._monitor.abortRequested():
             self._tick()
-            if self._monitor.waitForAbort(POLL_MS / 1000.0):
+            if self._monitor.waitForAbort(self._poll_interval() / 1000.0):
                 break
 
     def _mirror_edit_control(self):

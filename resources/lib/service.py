@@ -11,6 +11,13 @@ from modules.databases.ratings import RatingsDatabase
 from modules.config import SETTINGS_PATH
 from modules.select_view import VIEW_PREFERENCES_PATH
 
+# Main loop cadence, in seconds. Every iteration reads several infolabels and
+# conditions, each taking the graphics lock the render thread needs, so this is
+# a direct tax on animation smoothness. Nothing here needs sub-300ms reaction:
+# the fastest consumer is the altus.ctx.* publish that DialogContextMenu reads,
+# and a context menu takes a long-press to open.
+MAIN_LOOP_INTERVAL = 0.3
+
 
 class Service(xbmc.Monitor):
     """Main service class that coordinates monitor and rating lookups."""
@@ -60,7 +67,7 @@ class Service(xbmc.Monitor):
                 continue
             self.ratings_monitor.process_current_item()
             self.monitor_addon_views()
-            self.waitForAbort(0.2)
+            self.waitForAbort(MAIN_LOOP_INTERVAL)
 
     def _check_version_and_profile(self):
         """Check for skin updates and profile changes (runs in service loop)."""
