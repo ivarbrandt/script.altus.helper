@@ -45,19 +45,51 @@ class RatingsMonitor:
         self.current_ratings_thread = None
         self._rating_lock = Lock()
         self.config = ReleaseWindowConfig.from_skin_settings()
+        self._last_identity = None
+        self._last_fetch_ratings = None
+        self._last_meta = None
 
 
-    def process_current_item(self) -> None:
-        """Process the current media item."""
-        self._check_smart_status_setting_changes()
-        meta = self._get_current_item_meta()
+    def process_current_item(self, fetch_ratings: bool = True) -> None:
+        """Process the current media item.
+
+        Runs every main-loop tick, so it early-outs on an unchanged item: one
+        infolabel decides whether anything else is read. Everything derived
+        from the item — the context menu properties, the release-window
+        settings check, the id lookup — happens once per focus change. The meta
+        is kept so an in-flight fetch can still converge on later ticks
+        without re-reading the ListItem.
+
+        fetch_ratings is False without an MDbList key. The context menu
+        properties still publish; no ids are looked up and nothing is fetched.
+        """
+        identity = self.get_infolabel("ListItem.FileNameAndPath")
+        if not identity:
+            # Items with no path (static menu entries) still need to register a
+            # focus change, or moving between them would never clear the
+            # context menu properties.
+            identity = "label:" + self.get_infolabel("ListItem.Label")
+        if identity != self._last_identity or fetch_ratings != self._last_fetch_ratings:
+            self._last_identity = identity
+            self._last_fetch_ratings = fetch_ratings
+            dbtype = self.get_infolabel("ListItem.DBTYPE").lower()
+            self._publish_context_properties(dbtype)
+            self._last_meta = None
+            if fetch_ratings:
+                self._check_smart_status_setting_changes()
+                self._last_meta = self._get_current_item_meta(dbtype)
+        meta = self._last_meta
         if not meta:
             return
         media_id = meta.get("id")
         if not media_id:
             return
         self._handle_trailer_update(media_id)
-        if media_id != self.last_set_id or media_id != self.pending_id:
+        # "and", not "or": skip once the item is shown or already being fetched.
+        # With "or", any item served from cache re-ran _process_ratings every
+        # tick forever, because pending_id still held an earlier item — which
+        # rewrote every ratings property three times a second.
+        if media_id != self.last_set_id and media_id != self.pending_id:
             self._process_ratings(media_id, meta)
 
     def _check_smart_status_setting_changes(self):
@@ -89,7 +121,11 @@ class RatingsMonitor:
             if cached_data:
                 self._set_cached_property(media_id, json.dumps(cached_data))
                 self._update_window_properties(cached_data)
-                self.last_set_id = cached_data.get("imdbid") or media_id
+                # Every comparison against last_set_id is with media_id, so it
+                # must hold media_id. Storing the imdb id here left TMDb-keyed
+                # items unconverged, which only resolved because the old "or"
+                # re-ran processing every tick.
+                self.last_set_id = media_id
                 return
 
             # If no cache found anywhere or cached data is expired, fetch new data
@@ -142,7 +178,7 @@ class RatingsMonitor:
 
                 self._cache_ratings(media_id, result)
                 self._update_window_properties(result)
-                self.last_set_id = result.get("imdbid") or media_id
+                self.last_set_id = media_id
         except Exception as e:
             xbmc.log(f"Error fetching ratings: {str(e)}", xbmc.LOGERROR)
 
@@ -204,10 +240,13 @@ class RatingsMonitor:
         home_window.clearProperty(CACHED_IDS_INDEX_PROP)
 
 
-    def _get_current_item_meta(self) -> Optional[Dict[str, Any]]:
-        """Get metadata for the current item."""
-        dbtype = self.get_infolabel("ListItem.DBTYPE").lower()
-        path = self.get_infolabel("ListItem.Path")
+    def _publish_context_properties(self, dbtype: str) -> None:
+        """Publish the focused item's detail for DialogContextMenu.
+
+        Kept separate from the ratings lookup so it runs without an MDbList
+        key — the context menu has nothing to do with ratings, and gating it
+        on the key left keyless users with an empty poster and header.
+        """
         if dbtype in ["movie", "tvshow", "episode", "season"]:
             # Published for the skin because ListItem/Container infolabels do not
             # resolve inside DialogContextMenu over Home — only Window(Home)
@@ -249,6 +288,10 @@ class RatingsMonitor:
                 self.home_window.clearProperty("altus.ctx.tvshowtitle")
                 self.home_window.clearProperty("altus.ctx.season")
                 self.home_window.clearProperty("altus.ctx.episode")
+
+    def _get_current_item_meta(self, dbtype: str) -> Optional[Dict[str, Any]]:
+        """Get metadata for the current item."""
+        path = self.get_infolabel("ListItem.Path")
         if not (dbtype in ["movie", "tvshow", "episode", "season"] or
             path.startswith("plugin://plugin.video.mediafusion")):
             return None
@@ -264,7 +307,7 @@ class RatingsMonitor:
         if imdb_id and imdb_id.startswith("tt"):
             return {"id": imdb_id}
         elif tmdb_id:
-            return {"id": tmdb_id, "media_type": self._get_media_type()}
+            return {"id": tmdb_id, "media_type": self._get_media_type(dbtype)}
 
         # Fallback to title lookup
         title = self.get_infolabel("ListItem.Label")
@@ -274,7 +317,7 @@ class RatingsMonitor:
         meta = {
             "title": title,
             "premiered": self.get_infolabel("ListItem.Premiered"),
-            "media_type": self._get_media_type(),
+            "media_type": self._get_media_type(dbtype),
         }
 
         found_imdb_id, found_tmdb_id = self._lookup_imdb_id(meta)
@@ -288,9 +331,8 @@ class RatingsMonitor:
             "tmdb_id": found_tmdb_id,
         }
 
-    def _get_media_type(self) -> str:
-        """Determine media type from current item."""
-        dbtype = self.get_infolabel("ListItem.DBTYPE").lower()
+    def _get_media_type(self, dbtype: str) -> str:
+        """Determine media type from the item's already-read DBTYPE."""
         return "movie" if dbtype == "movie" else "tv"
 
     def _lookup_imdb_id(
@@ -355,7 +397,10 @@ class RatingsMonitor:
     def _handle_trailer_update(self, media_id: str) -> None:
         """Handle trailer updates for the current item."""
         if media_id == self.last_set_id and media_id != self.last_trailer_id:
-            trailer_url = self.get_infolabel("Window(Home).Property(altus.trailer)")
+            # Direct property read, not an infolabel: this runs every tick while
+            # a converged item has no trailer, and getProperty does not evaluate
+            # anything against GUI state.
+            trailer_url = self.home_window.getProperty("altus.trailer")
             if trailer_url:
                 match = re.search(VIDEO_ID_PATTERN, trailer_url)
                 if match:

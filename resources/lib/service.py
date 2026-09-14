@@ -17,6 +17,12 @@ from modules.select_view import VIEW_PREFERENCES_PATH
 # the fastest consumer is the altus.ctx.* publish that DialogContextMenu reads,
 # and a context menu takes a long-press to open.
 MAIN_LOOP_INTERVAL = 0.3
+# Seconds between skin-version and Kodi-profile checks. The version only
+# changes when the skin updates, and a profile switch restarts services — so
+# this used to build an xbmcaddon.Addon every tick to watch for events that
+# happen a handful of times a year. Ten seconds after an update is soon enough
+# to regenerate the widget XML.
+VERSION_CHECK_INTERVAL = 10
 
 
 class Service(xbmc.Monitor):
@@ -45,6 +51,7 @@ class Service(xbmc.Monitor):
         self._history_was_sub_minute = False
         # 10s bucket the sub-minute labels were last rendered for.
         self._last_history_bucket = 0
+        self._last_version_check = 0.0
 
     def run(self):
         """Start the service and monitor."""
@@ -57,7 +64,10 @@ class Service(xbmc.Monitor):
                 and xbmc.getSkinDir() == "skin.altus"
             )
             if on_home:
-                self._check_version_and_profile()
+                now = time.monotonic()
+                if now - self._last_version_check >= VERSION_CHECK_INTERVAL:
+                    self._last_version_check = now
+                    self._check_version_and_profile()
                 self._check_stacked_widgets(on_home)
             else:
                 self._was_on_home = False
@@ -65,7 +75,11 @@ class Service(xbmc.Monitor):
             if self._should_pause():
                 self.waitForAbort(2)
                 continue
-            self.ratings_monitor.process_current_item()
+            # The MDbList key gates ratings and trailers only. It used to sit in
+            # _should_pause, which also skipped per-addon views and the context
+            # menu properties for anyone without a key.
+            has_api_key = bool(self.get_infolabel("Skin.String(mdblist_api_key)"))
+            self.ratings_monitor.process_current_item(fetch_ratings=has_api_key)
             self.monitor_addon_views()
             self.waitForAbort(MAIN_LOOP_INTERVAL)
 
@@ -82,6 +96,10 @@ class Service(xbmc.Monitor):
     def _check_stacked_widgets(self, on_home):
         """Init stacked widgets when home window loads (replaces onload RunScript)."""
         starting = self.home_window.getProperty("altus.starting_widgets")
+        if self._was_on_home and starting:
+            # Already initialised and still on home: needs_init below is False
+            # whatever the setting says, so don't evaluate it every tick.
+            return
         disable_reset = self.get_visibility("Skin.HasSetting(Disable.ResetStacked)")
         # Run when: property is empty (first load or after _reload_skin cleared it)
         # OR when returning to home and reset isn't disabled
@@ -140,10 +158,13 @@ class Service(xbmc.Monitor):
             content_type = content
 
         addon_key = plugin_name if plugin_name else "__library__"
-        prefs = self._load_view_preferences()
-
         addon_changed = addon_key != self._last_addon_key
         content_changed = content_type != self._last_content_type
+        if not (addon_changed or content_changed):
+            return
+        # Only read once something changed — prefs are only used on a change,
+        # and loading them costs a stat syscall even on a cache hit.
+        prefs = self._load_view_preferences()
 
         if addon_changed:
             self._last_addon_key = addon_key
@@ -227,8 +248,6 @@ class Service(xbmc.Monitor):
         if self.home_window.getProperty("pause_services") == "true":
             return True
         if xbmc.getSkinDir() != "skin.altus":
-            return True
-        if not self.get_infolabel("Skin.String(mdblist_api_key)"):
             return True
         if not self.get_visibility(
             "Window.IsVisible(videos) | "
