@@ -38,6 +38,10 @@ class ImageColorAnalyzer:
         global OLD_IMAGE, OLD_LOGO
         if not hasattr(ImageColorAnalyzer, "_last_setting"):
             ImageColorAnalyzer._last_setting = None
+        # False when blur generation or video logo cropping could not complete,
+        # so ImageMonitor retries the same inputs. It used to rebuild the
+        # analyzer every tick, which retried these by accident.
+        self.settled = True
         self.clear_video_properties(prop)
         self.image = xbmc.getInfoLabel("Control.GetLabel(%s)" % BLUR_CONTAINER)
         self.logo = (
@@ -90,7 +94,15 @@ class ImageColorAnalyzer:
         saved_logo = self.save_cropped_logo()
         if saved_logo:
             winprop(f"{prop}_clearlogo_cropped_video", saved_logo)
-            logo_color, logo_text_color = self.process_image_for_colors(self.logo)
+            colors = self.process_image_for_colors(self.logo)
+            if colors is None:
+                # The decode failed. Show the fallback now, but mark unsettled so
+                # ImageMonitor retries — this runs once per playback, so without
+                # the retry one failed decode would leave the logo grey for the
+                # whole film.
+                colors = ("FFCCCCCC", "FF141515")
+                self.settled = False
+            logo_color, logo_text_color = colors
             winprop(f"{prop}_logo_color_video", logo_color)
             winprop(f"{prop}_logo_text_color_video", logo_text_color)
             r = int(logo_color[2:4], 16)
@@ -106,6 +118,8 @@ class ImageColorAnalyzer:
                 winprop(f"{prop}_logo_color_video", "FFCCCCCC")
                 winprop(f"{prop}_logo_text_color_video", "FF141515")
                 winprop(f"{prop}_logo_color_alt_video", "FFCCCCCC")
+        else:
+            self.settled = False
 
     def _process_background(self, prop):
         """Process background image"""
@@ -133,6 +147,8 @@ class ImageColorAnalyzer:
                         processed_img.save(targetfile, "PNG")
                     except Exception as e:
                         xbmc.log(f"Error saving processed image: {str(e)}", 2)
+                if not xbmcvfs.exists(targetfile):
+                    self.settled = False
             winprop(f"{prop}_blurred", targetfile)
         if colors:
             self.avgcolor = colors["avgcolor"]
@@ -146,6 +162,7 @@ class ImageColorAnalyzer:
             else:
                 self.avgcolor = "FFCCCCCC"
                 self.textcolor = "FF141515"
+                self.settled = False
         if hasattr(self, "avgcolor"):
             winprop(f"{prop}_color_noalpha", self.avgcolor[2:])
             winprop(f"{prop}_color", self.avgcolor)
@@ -336,7 +353,9 @@ class ImageColorAnalyzer:
                 return imagecolor, textcolor
         except Exception as e:
             xbmc.log(f"Error processing image colors: {str(e)}", 3)
-        return "FFCCCCCC", "FF141515"
+        # None rather than the grey defaults, so the caller can tell a failed
+        # decode from a real result and retry it.
+        return None
 
     def analyze_image(self, img):
         """Analyze image contrast and brightness - no changes needed"""
