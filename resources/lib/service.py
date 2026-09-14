@@ -271,8 +271,6 @@ class Service(xbmc.Monitor):
                 self.home_window.setProperty("pause_services", "true")
             elif method in ("GUI.OnScreensaverDeactivated", "System.OnWake"):
                 self.home_window.clearProperty("pause_services")
-            elif method == "GUI.OnScreensaverDeactivated":
-                self._update_section_states()
 
 
 if __name__ == "__main__":
