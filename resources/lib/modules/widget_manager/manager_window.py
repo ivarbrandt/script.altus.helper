@@ -698,7 +698,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self.edit_menu_item_id = item_id or self._get_selected_submenu_id()
             submenus = self.config[self.submenu_section_id]["submenus"]
             sub = next((s for s in submenus if s["id"] == self.edit_menu_item_id), {})
-            header_label = sub.get("label", "")
+            header_label = _resolve_localize(sub.get("label", ""))
             header_icon = sub.get("icon", "")
         # Build items: header + indented options
         items = [
@@ -781,7 +781,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         new_ids = []
         for sub in submenus:
             hidden = sub.get("visible") == "false"
-            label = _dim_label(sub["label"]) if hidden else sub["label"]
+            name = _resolve_localize(sub["label"])
+            label = _dim_label(name) if hidden else name
             props = {
                 "submenu_id": str(sub["id"]),
                 "hidden": "true" if hidden else "",
@@ -848,7 +849,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         else:
             submenus = self.config.get(self.submenu_section_id, {}).get("submenus", [])
             sub = next((s for s in submenus if s["id"] == item_id), {})
-            header_label = sub.get("label", "")
+            header_label = _resolve_localize(sub.get("label", ""))
             header_icon = sub.get("icon", "")
         header = self.getControl(SECTION_LIST).getListItem(0)
         header.setLabel("[B]%s[/B]" % header_label)
@@ -1119,7 +1120,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         submenus = self.config.get(self.submenu_section_id, {}).get("submenus", [])
         for sub in submenus:
             hidden = sub.get("visible") == "false"
-            label = _dim_label(sub["label"]) if hidden else sub["label"]
+            name = _resolve_localize(sub["label"])
+            label = _dim_label(name) if hidden else name
             li = xbmcgui.ListItem(label)
             li.setProperty("submenu_id", str(sub["id"]))
             li.setProperty("hidden", "true" if hidden else "")
@@ -1269,8 +1271,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         sub = next((s for s in submenus if s["id"] == sub_id), None)
         if not sub:
             return
-        new_name = self._input("Rename Submenu", sub["label"])
-        if not new_name or new_name == sub["label"]:
+        current_name = _resolve_localize(sub["label"])
+        new_name = self._input("Rename Submenu", current_name)
+        if not new_name or new_name == current_name:
             return
         self.cm.update_submenu(sub_id, label=new_name)
         self.changed = True
@@ -1327,7 +1330,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.changed = True
         idx = self.submenu_ids.index(sub_id)
         li = self.getControl(SECTION_LIST).getListItem(idx)
-        name = sub["label"]
+        name = _resolve_localize(sub["label"])
         li.setLabel(_dim_label(name) if new_visible == "false" else name)
         li.setProperty("hidden", "true" if new_visible == "false" else "")
         self._load_config()
@@ -1751,7 +1754,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             for i, s in enumerate(submenus):
                 hidden = s.get("visible") == "false"
                 li = section_list.getListItem(i)
-                li.setLabel(_dim_label(s["label"]) if hidden else s["label"])
+                name = _resolve_localize(s["label"])
+                li.setLabel(_dim_label(name) if hidden else name)
                 li.setProperty("submenu_id", str(s["id"]))
                 li.setProperty("hidden", "true" if hidden else "")
                 li.setProperty("icon", s.get("icon", ""))
