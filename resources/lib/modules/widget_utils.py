@@ -26,7 +26,7 @@ def widget_monitor(list_id):
     label_color = get_skin_variable("FocusColorTheme")
     stack_id = list_id + "1"
     window_id = xbmcgui.getCurrentWindowId()
-    if window_id not in [10000, 11121]:
+    if window_id != 11121:
         return
     window = xbmcgui.Window(window_id)
     home_window = xbmcgui.Window(10000)
@@ -39,11 +39,10 @@ def widget_monitor(list_id):
     except:
         return
     path_prop = "altus.%s.path" % list_id
-    label_prop = "altus.%s.label" % list_id
     is_updating_cond = "Container(%s).IsUpdating" % stack_id
     while not monitor.abortRequested():
         monitor.waitForAbort(0.1)
-        if xbmcgui.getCurrentWindowId() not in [10000, 11121]:
+        if xbmcgui.getCurrentWindowId() != 11121:
             break
         if list_id != str(window.getFocusId()):
             break
@@ -64,7 +63,7 @@ def widget_monitor(list_id):
                 switch_widget = False
             elif xbmc.getCondVisibility("System.HasActiveModalDialog"):
                 switch_widget = False
-            elif xbmcgui.getCurrentWindowId() not in [10000, 11121]:
+            elif xbmcgui.getCurrentWindowId() != 11121:
                 switch_widget = False
             if switch_widget and display_delay:
                 home_window.setProperty("altus.countdown_active", "true")
@@ -82,21 +81,16 @@ def widget_monitor(list_id):
         home_window.clearProperty("altus.countdown_active")
         if switch_widget:
             new_label = xbmc.getInfoLabel("ListItem.Label")
-            if window_id == 11121:
-                # Search-side: route stacked-child path/label to Window(home)
-                # under a distinct prefix (altus.search.child.<id>.*) to
-                # avoid the Window(11121) cross-thread crash and to avoid
-                # colliding with home widget IDs that share the same numeric
-                # range under the plain altus.<id>.* prefix.
-                home_window.setProperty(
-                    "altus.search.child.%s.label" % list_id, new_label
-                )
-                home_window.setProperty(
-                    "altus.search.child.%s.path" % list_id, cpath_path
-                )
-            else:
-                window.setProperty(label_prop, new_label)
-                window.setProperty(path_prop, cpath_path)
+            # Route stacked-child path/label to Window(home) under a distinct
+            # prefix (altus.search.child.<id>.*) to avoid the Window(11121)
+            # cross-thread crash and to keep clear of home wall IDs that share
+            # the same numeric range.
+            home_window.setProperty(
+                "altus.search.child.%s.label" % list_id, new_label
+            )
+            home_window.setProperty(
+                "altus.search.child.%s.path" % list_id, cpath_path
+            )
             start_wait = 0
             while not xbmc.getCondVisibility(is_updating_cond) and start_wait < 1:
                 monitor.waitForAbort(0.05)

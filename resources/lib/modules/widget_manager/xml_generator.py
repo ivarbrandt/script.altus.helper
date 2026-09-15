@@ -11,9 +11,7 @@ from threading import Thread
 
 from modules.widget_manager.config_manager import ConfigManager
 
-WIDGETS_XML_FILE = "special://skin/xml/script-altus-widgets.xml"
 MAIN_MENU_XML_FILE = "special://skin/xml/script-altus-main_menu.xml"
-HOME_GROUPS_XML_FILE = "special://skin/xml/script-altus-home_groups.xml"
 HOME_WALLS_XML_FILE = "special://skin/xml/script-altus-home_walls.xml"
 SUBMENUS_XML_FILE = "special://skin/xml/script-altus-submenus.xml"
 # Base ID for all widget-related controls. Each section occupies a 100-ID range:
@@ -69,16 +67,6 @@ def _compute_group_id(section_position):
     return _compute_section_base(section_position)
 
 
-def _compute_grouplist_id(section_position):
-    """Compute the grouplist control ID for a section."""
-    return _compute_section_base(section_position) + 1
-
-
-def _compute_pagecontrol_id(section_position):
-    """Compute the pagecontrol (scrollbar) ID for a section."""
-    return _compute_section_base(section_position) + 99
-
-
 def _compute_row_id(section_position):
     """Compute the tab row control ID for a section (base + 2)."""
     return _compute_section_base(section_position) + 2
@@ -101,72 +89,6 @@ def _compute_list_id(section_position, widget_position):
     e.g. section 1, widget 1 → 3000 + 10 + 1 = 3011
     """
     return _compute_section_base(section_position) + 10 + widget_position
-
-
-def _build_widget_xml(widget, list_id):
-    """Generate XML for a single non-stacked widget."""
-    xml = """
-    <include content="{display_type}">
-      <param name="content_path" value="{path}"/>
-      <param name="widget_header" value="{label}"/>
-      <param name="widget_target" value="{target}"/>
-      <param name="list_id" value="{list_id}"/>""".format(
-        display_type=widget["display_type"],
-        path=_escape_ampersand(widget["path"]),
-        label=_escape_ampersand(widget["label"]),
-        target=widget["target"],
-        list_id=list_id,
-    )
-    if widget.get("sortby"):
-        xml += '\n      <param name="sortby" value="%s"/>' % widget["sortby"]
-    if widget.get("sortorder"):
-        xml += '\n      <param name="sortorder" value="%s"/>' % widget["sortorder"]
-    icon = HARDCODED_WIDGET_ICONS.get(widget["path"])
-    if icon:
-        xml += '\n      <param name="icon" value="%s"/>' % icon
-    xml += "\n    </include>"
-    return xml
-
-
-def _resolve_stacked_child_type(stacked_type):
-    """Resolve the child include name for a stacked widget.
-
-    All stacked children need a 'Stacked' suffix appended to their base type.
-    e.g. WidgetListSmallPoster → WidgetListSmallPosterStacked
-         WidgetListSmallPosterFlix → WidgetListSmallPosterFlixStacked
-    Already-suffixed types are left unchanged.
-    """
-    if stacked_type.endswith("Stacked"):
-        return stacked_type
-    return stacked_type + "Stacked"
-
-
-def _build_stacked_widget_xml(widget, list_id):
-    """Generate XML for a stacked widget (parent category + child content)."""
-    child_id = "%s1" % list_id
-    child_type = _resolve_stacked_child_type(widget["stacked_type"])
-    return """
-    <include content="WidgetListCategoryStacked">
-      <param name="content_path" value="{path}"/>
-      <param name="widget_header" value="{label}"/>
-      <param name="widget_target" value="{target}"/>
-      <param name="list_id" value="{list_id}"/>
-      <param name="child_id" value="{child_id}"/>
-    </include>
-    <include content="{child_type}">
-      <param name="content_path" value="$INFO[Window(Home).Property(altus.{list_id}.path)]"/>
-      <param name="widget_header" value="$INFO[Window(Home).Property(altus.{list_id}.label)]"/>
-      <param name="widget_target" value="{target}"/>
-      <param name="list_id" value="{child_id}"/>
-      <param name="parent_id" value="{list_id}"/>
-    </include>""".format(
-        path=_escape_ampersand(widget["path"]),
-        label=_escape_ampersand(widget["label"]),
-        target=widget["target"],
-        list_id=list_id,
-        child_id=child_id,
-        child_type=child_type,
-    )
 
 
 def _wall_include(widget):
@@ -352,8 +274,8 @@ def _build_menu_item_xml(section, group_id, submenu_list_id=None, has_walls=True
     Each section automatically gets a visibility condition tied to its DB id,
     allowing users to show/hide sections via skin settings.
     Weather sections get special multi-onclick handling and id=weather.
-    menu_id is the group ID so SetFocus cascades to the grouplist inside,
-    matching how weather (15000) works.
+    menu_id is the group ID, so SetFocus lands on the section's default
+    control (its tab row), matching how weather (15000) works.
     A section without visible widgets generates no group, so its item is
     marked no_walls and Home's onright leaves focus on the menu. menu_id stays,
     since its submenu list is still tied to it.
@@ -402,42 +324,6 @@ def _build_menu_item_xml(section, group_id, submenu_list_id=None, has_walls=True
     return xml
 
 
-def generate_widgets_xml(config):
-    """Generate per-section widget include files from config.
-
-    Args:
-        config: dict from ConfigManager.get_full_config()
-    Returns:
-        XML string with per-section includes (SectionWidgets_1, etc.).
-    """
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>'
-    for section_id in sorted(
-        config, key=lambda sid: config[sid]["section"]["position"]
-    ):
-        section_data = config[section_id]
-        section = section_data["section"]
-        if section.get("visible") == "false":
-            continue
-        if section["name"] == "$LOCALIZE[8]":
-            continue
-        widgets = section_data["widgets"]
-        if not widgets:
-            continue
-        section_pos = section["position"]
-        xml += '\n  <include name="SectionWidgets_%s">' % section_pos
-        for widget in widgets:
-            if widget.get("visible") == "false":
-                continue
-            list_id = _compute_list_id(section_pos, widget["position"])
-            if widget["is_stacked"]:
-                xml += _build_stacked_widget_xml(widget, list_id)
-            else:
-                xml += _build_widget_xml(widget, list_id)
-        xml += "\n  </include>"
-    xml += "\n</includes>"
-    return xml
-
-
 def generate_main_menu_xml(config):
     """Generate the main menu include file from config.
 
@@ -468,55 +354,6 @@ def generate_main_menu_xml(config):
             w.get("visible") != "false" for w in section_data["widgets"]
         )
         xml += _build_menu_item_xml(section, group_id, submenu_list_id, has_walls)
-    xml += "\n  </include>\n</includes>"
-    return xml
-
-
-def generate_home_groups_xml(config):
-    """Generate per-section group/grouplist structure for the home screen.
-
-    Each section gets its own group (with visibility), grouplist, and scrollbar.
-    Weather sections are skipped (hardcoded in Home.xml).
-
-    Args:
-        config: dict from ConfigManager.get_full_config()
-    Returns:
-        XML string with the HomeWidgetGroups include.
-    """
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>\n  <include name="HomeWidgetGroups">'
-    for section_id in sorted(
-        config, key=lambda sid: config[sid]["section"]["position"]
-    ):
-        section_data = config[section_id]
-        section = section_data["section"]
-        if section.get("visible") == "false":
-            continue
-        if section["name"] == "$LOCALIZE[8]":
-            continue
-        section_pos = section["position"]
-        group_id = _compute_group_id(section_pos)
-        grouplist_id = _compute_grouplist_id(section_pos)
-        pagecontrol_id = _compute_pagecontrol_id(section_pos)
-        xml += """
-    <control type="group" id="{group_id}">
-      <visible>String.IsEqual(Container(9000).ListItem.Property(menu_id),{group_id})</visible>
-      <include content="Section_Visible_Right_Delayed">
-        <param name="menu_id" value="{group_id}"/>
-      </include>
-      <control type="grouplist" id="{grouplist_id}">
-        <include>WidgetGroupListCommon</include>
-        <pagecontrol>{pagecontrol_id}</pagecontrol>
-        <include>SectionWidgets_{section_pos}</include>
-      </control>
-      <include content="WidgetScrollbar" condition="Skin.HasSetting(touchmode)">
-        <param name="scrollbar_id" value="{pagecontrol_id}"/>
-      </include>
-    </control>""".format(
-            group_id=group_id,
-            grouplist_id=grouplist_id,
-            pagecontrol_id=pagecontrol_id,
-            section_pos=section_pos,
-        )
     xml += "\n  </include>\n</includes>"
     return xml
 
@@ -594,86 +431,10 @@ def _write_xml(file_path, content):
         f.write(content)
 
 
-def _files_get_directory(directory):
-    """Fetch directory listing via JSON-RPC, returning plugin directories."""
-    import json
-
-    command = {
-        "jsonrpc": "2.0",
-        "id": "script.altus.helper",
-        "method": "Files.GetDirectory",
-        "params": {
-            "directory": directory,
-            "media": "files",
-            "properties": ["title", "file", "thumbnail"],
-        },
-    }
-    try:
-        response = xbmc.executeJSONRPC(json.dumps(command))
-        result = json.loads(response).get("result", None)
-        return [i for i in result.get("files") if i["filetype"] == "directory"]
-    except Exception:
-        return None
-
-
-def _init_stacked_widgets(config):
-    """Pre-load the first category for all stacked widgets.
-
-    For each stacked widget, fetches the first item from its content path
-    and sets window properties so the child list has content on startup.
-    """
-    window = xbmcgui.Window(10000)
-    window.setProperty("altus.starting_widgets", "true")
-    for section_id in sorted(
-        config, key=lambda sid: config[sid]["section"]["position"]
-    ):
-        section = config[section_id]["section"]
-        if section.get("visible") == "false":
-            continue
-        for widget in config[section_id]["widgets"]:
-            if not widget["is_stacked"] or widget.get("visible") == "false":
-                continue
-            list_id = _compute_list_id(section["position"], widget["position"])
-            try:
-                items = _files_get_directory(widget["path"])
-                if not items:
-                    continue
-                first_item = items[0]
-                window.setProperty("altus.%s.label" % list_id, first_item["label"])
-                window.setProperty("altus.%s.path" % list_id, first_item["file"])
-            except Exception:
-                continue
-
-
-def _clear_stacked_widget_properties(config):
-    """Clear all stacked widget window properties so they re-fetch on next init."""
-    window = xbmcgui.Window(10000)
-    for section_id in config:
-        section = config[section_id]["section"]
-        for widget in config[section_id]["widgets"]:
-            if not widget["is_stacked"]:
-                continue
-            list_id = _compute_list_id(section["position"], widget["position"])
-            window.clearProperty("altus.%s.label" % list_id)
-            window.clearProperty("altus.%s.path" % list_id)
-
-
-def _clear_stacked_widget_properties_all():
-    """Read config and clear all stacked widget properties."""
-    cm = ConfigManager()
-    config = cm.get_full_config()
-    cm.close()
-    if config:
-        _clear_stacked_widget_properties(config)
-
-
 def _reload_skin():
     """Reload the skin to pick up XML changes.
 
     Prevents duplicate reloads and waits for addon browser dialog to close.
-    Clears altus.starting_widgets so the skin's <onload> starting_widgets
-    trigger always fires after ReloadSkin(), ensuring stacked widgets init
-    regardless of the Disable.ResetStacked setting.
     """
     window = xbmcgui.Window(10000)
     if window.getProperty("altus.clear_path_refresh") == "true":
@@ -682,8 +443,6 @@ def _reload_skin():
     while xbmcgui.getCurrentWindowId() == 10035:
         xbmc.sleep(500)
     window.setProperty("altus.clear_path_refresh", "")
-    _clear_stacked_widget_properties_all()
-    window.clearProperty("altus.starting_widgets")
     xbmc.sleep(200)
     xbmc.executebuiltin("ReloadSkin()")
 

@@ -15,10 +15,7 @@ from modules.widget_manager.config_manager import (
     rename_config,
     delete_config,
 )
-from modules.widget_manager.xml_generator import (
-    generate_and_reload,
-    _init_stacked_widgets,
-)
+from modules.widget_manager.xml_generator import generate_and_reload
 from modules.widget_manager.default_config import create_default_sections
 from modules.widget_manager.migration import migrate, migrate_to_walls, import_from_skin
 from modules.search_manager.default_config import (
@@ -374,12 +371,6 @@ def routing():
         from modules.widget_manager.manager_window import open_manager
 
         return open_manager()
-
-    if mode == "starting_widgets":
-        cm = ConfigManager()
-        config = cm.get_full_config()
-        cm.close()
-        return _init_stacked_widgets(config)
 
     if mode == "search_input":
         from modules.search_utils import SPaths
