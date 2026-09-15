@@ -97,7 +97,11 @@ def write_resolved_widget_paths(encoded_term):
     both the keystroke-debounced refresh path (LiveSearchMonitor) and the
     keyboard-confirmed search path (search_utils.search_input) — the latter
     needs to bypass the debounce so widgets are loadable when re_search's
-    SetFocus(2000) lands."""
+    SetFocus(2000) lands.
+
+    Returns the search generation the paths were written under, or None if a
+    clear abandoned the write. Pass it to starting_search_widgets() so the
+    stacked children are primed only while that search is still current."""
     from modules.search_manager.xml_generator import (
         iter_visible_widgets_with_ids,
     )
@@ -121,8 +125,9 @@ def write_resolved_widget_paths(encoded_term):
         # otherwise the widgets this loop hasn't reached yet get their real
         # path written back over the clear and stay populated.
         if home.getProperty(GENERATION_PROPERTY) != generation:
-            return
+            return None
         home.setProperty("altus.search.widget.%s.path" % list_id, resolved)
+    return generation
 
 
 class LiveSearchMonitor(threading.Thread):
@@ -264,7 +269,7 @@ class LiveSearchMonitor(threading.Thread):
             self.home_window.setProperty(self._path_property(list_id), value)
 
     def _write_resolved_paths(self, encoded):
-        write_resolved_widget_paths(encoded)
+        return write_resolved_widget_paths(encoded)
 
     def _focus_id(self):
         # Use the InfoLabel rather than xbmcgui.Window(...).getFocusId() —
@@ -477,8 +482,9 @@ class LiveSearchMonitor(threading.Thread):
             self.home_window.setProperty("altus.search.refreshing", "true")
             self.home_window.setProperty("altus.search.input.encoded", encoded)
             self.home_window.setProperty("altus.search.input.trakt.encoded", encoded)
-            self._write_resolved_paths(encoded)
-            starting_search_widgets()
+            generation = self._write_resolved_paths(encoded)
+            if generation is not None:
+                starting_search_widgets(generation)
             # Hold _refreshing for the round's real duration, not a guess.
             # Measured: containers report IsUpdating within ~250ms of the paths
             # landing and finish around 3s — but COOLDOWN_MS used to release the

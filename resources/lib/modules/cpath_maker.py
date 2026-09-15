@@ -757,20 +757,24 @@ def remake_all_cpaths(silent=False):
         xbmcgui.Dialog().ok("Altus", "Menus and widgets remade")
 
 
-def starting_search_widgets():
+def starting_search_widgets(generation=None):
     """Pre-populate stacked search widgets' child label/path properties.
 
     For the DB-backed search-manager config: for each visible stacked widget, resolves the
     url_template against the current encoded query, fetches the first
     item from the resulting plugin URL, and writes
-    ``altus.<list_id>.label`` / ``altus.<list_id>.path`` on Window(11121)
+    ``altus.search.child.<list_id>.label`` / ``.path`` on Window(home)
     so the child container has content the moment its parent reveals it.
 
-    Called from LiveSearchMonitor._do_refresh after the parent path
-    properties have been written. Skips silently when the encoded query
-    isn't set yet.
+    Called after the parent path properties have been written, from both
+    LiveSearchMonitor._do_refresh (typed search) and SPaths.search_input
+    (confirmed or history search). ``generation`` is the search generation
+    those paths were written under; a child is skipped once a clear has
+    bumped it, so a slow listing can't repopulate a cleared search. Skips
+    silently when the encoded query isn't set yet.
     """
     from modules.search_manager.xml_generator import iter_visible_widgets_with_ids
+    from modules.monitors.live_search import GENERATION_PROPERTY
 
     # Markers duplicated from monitors.live_search to avoid a circular
     # import (live_search → cpath_maker → live_search). Keep these in
@@ -798,6 +802,8 @@ def starting_search_widgets():
             items = files_get_directory(resolved)
             if not items:
                 continue
+            if generation is not None and home.getProperty(GENERATION_PROPERTY) != generation:
+                return
             first_item = items[0]
             home.setProperty(
                 "altus.search.child.%s.label" % list_id, first_item["label"]
