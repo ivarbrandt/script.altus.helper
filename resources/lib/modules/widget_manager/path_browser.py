@@ -6,6 +6,7 @@ games, pictures, favourites, and more.
 """
 import json
 import re
+from urllib.parse import unquote
 import xbmc, xbmcgui
 
 _LOCALIZE_RE = re.compile(r"\$LOCALIZE\[(\d+)\]")
@@ -329,8 +330,98 @@ def build_onclick(path, target):
         return "ActivateWindow(1100,%s,return)" % path
     if path.startswith("androidapp://"):
         return "StartAndroidActivity(%s)" % path
+    if path.startswith("videodb://"):
+        # The video database only opens in Videos, whatever target was stored
+        return "ActivateWindow(Videos,%s,return)" % path
     window = WINDOW_MAP.get(target, "Videos")
     return "ActivateWindow(%s,%s,return)" % (window, path)
+
+
+# ── Icons ──
+
+# Kodi's default icons for library paths, keyed by the last segment of a
+# videodb:// path or the first of a musicdb:// one. Names match what Kodi's own
+# library nodes use, so a picked path looks like its node counterpart.
+_VIDEODB_ICONS = {
+    "genres": "DefaultGenre.png",
+    "years": "DefaultYear.png",
+    "actors": "DefaultActor.png",
+    "directors": "DefaultDirector.png",
+    "studios": "DefaultStudios.png",
+    "countries": "DefaultCountry.png",
+    "tags": "DefaultTags.png",
+    "sets": "DefaultSets.png",
+    "artists": "DefaultArtist.png",
+    "albums": "DefaultMusicAlbums.png",
+    "recentlyaddedmovies": "DefaultRecentlyAddedMovies.png",
+    "recentlyaddedepisodes": "DefaultRecentlyAddedEpisodes.png",
+    "recentlyaddedmusicvideos": "DefaultRecentlyAddedMusicVideos.png",
+    "inprogresstvshows": "DefaultInProgressShows.png",
+}
+_VIDEODB_TITLE_ICONS = {
+    "movies": "DefaultMovieTitle.png",
+    "tvshows": "DefaultTVShowTitle.png",
+    "musicvideos": "DefaultMusicVideoTitle.png",
+}
+_MUSICDB_ICONS = {
+    "artists": "DefaultMusicArtists.png",
+    "albums": "DefaultMusicAlbums.png",
+    "songs": "DefaultMusicSongs.png",
+    "genres": "DefaultMusicGenres.png",
+    "years": "DefaultMusicYears.png",
+    "compilations": "DefaultMusicCompilations.png",
+    "recentlyaddedalbums": "DefaultMusicRecentlyAdded.png",
+    "recentlyplayedalbums": "DefaultMusicRecentlyPlayed.png",
+    "recentlyplayedsongs": "DefaultMusicRecentlyPlayed.png",
+}
+
+
+def default_icon(path):
+    """Kodi default icon for a built-in path, or "" when there isn't one.
+
+    The browser's predefined nodes and Kodi's own library listings don't carry
+    an icon for these paths, so this is what gives a picked widget or submenu
+    entry its icon.
+    """
+    if path.startswith(("videodb://", "musicdb://")):
+        scheme, _, rest = path.partition("://")
+        segments = [s for s in rest.split("/") if s]
+        if not segments:
+            return ""
+        if scheme == "musicdb":
+            if segments[0] == "top100":
+                return "DefaultMusicTop100%s.png" % (
+                    segments[1].capitalize() if len(segments) > 1 else ""
+                )
+            return _MUSICDB_ICONS.get(segments[0], "")
+        if segments[-1] == "titles":
+            return _VIDEODB_TITLE_ICONS.get(segments[0], "")
+        return _VIDEODB_ICONS.get(segments[-1], "")
+    if path.startswith("special://videoplaylists") or "/playlists/video" in path:
+        return "DefaultVideoPlaylists.png"
+    if "/playlists/music" in path:
+        return "DefaultMusicPlaylists.png"
+    if path.startswith("sources://music"):
+        return "DefaultMusicSources.png"
+    return ""
+
+
+def item_icon(item):
+    """Icon for a JSON-RPC listed item: its thumbnail, else its icon art, else
+    the default icon for its path.
+
+    Library nodes set only the icon art (DefaultMovieTitle.png and the like).
+    JSON-RPC wraps every art value as image://<encoded>/, which is fine for
+    real images but leaves a bare skin media name unresolvable, so those are
+    unwrapped back to the name.
+    """
+    art = item.get("art") or {}
+    icon = item.get("thumbnail") or art.get("icon") or art.get("thumb") or ""
+    if icon.startswith("image://") and icon.endswith("/"):
+        inner = unquote(icon[len("image://"):-1])
+        if "://" not in inner and "/" not in inner:
+            return inner
+    return icon or default_icon(item.get("file", ""))
 
 
 # ── Internal helpers ──
@@ -360,7 +451,7 @@ def _auto_display_type(path, target):
         return "WidgetListSquare"
     # Favourites → Square
     if path.startswith("favourites://"):
-        return "WidgetListFavourites"
+        return "WidgetListSquare"
     # Music library content → Square (album/artist artwork is square)
     if path.startswith("musicdb://"):
         return "WidgetListSquare"
@@ -459,10 +550,16 @@ def _browse_submenu(nodes, target, allow_multi=True, multi_heading=None):
         or path.startswith("androidapp://")
     )
     if not browsable:
-        return {"label": label, "path": path, "thumbnail": "", "target": node_target}
+        return {
+            "label": label,
+            "path": path,
+            "thumbnail": default_icon(path),
+            "target": node_target,
+        }
     result = _browse_path(
         path=path,
         label=label,
+        thumbnail=default_icon(path),
         allow_multi=allow_multi,
         multi_heading=multi_heading,
     )
@@ -704,6 +801,8 @@ def _multiselect_leaves(leaves, parent_target, heading=None):
     for n in leaves:
         label = _resolve_localize(n[0])
         li = ListItem(label, "Submenu option", offscreen=True)
+        if default_icon(n[1]):
+            li.setArt({"icon": default_icon(n[1])})
         options.append(li)
     picked_idx = dialog.multiselect(
         heading or "Add multiple widgets", options, useDetails=True
@@ -718,7 +817,7 @@ def _multiselect_leaves(leaves, parent_target, heading=None):
             {
                 "label": _resolve_localize(n[0]),
                 "path": n[1],
-                "thumbnail": "",
+                "thumbnail": default_icon(n[1]),
                 "target": node_target,
             }
         )
@@ -738,7 +837,7 @@ def _get_directory(path):
         "params": {
             "directory": path,
             "media": "files",
-            "properties": ["title", "file", "thumbnail"],
+            "properties": ["title", "file", "thumbnail", "art"],
         },
     }
     try:
@@ -746,6 +845,8 @@ def _get_directory(path):
         files = response.get("result", {}).get("files") or []
     except Exception:
         return []
+    for f in files:
+        f["thumbnail"] = item_icon(f)
     # Addon paths: only show plugin:// entries
     if path.startswith("plugin://") or path.startswith("addons://"):
         return [f for f in files if f.get("file", "").startswith("plugin://")]

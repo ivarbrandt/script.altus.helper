@@ -4,7 +4,7 @@ Creates default sections and widgets matching Estuary's standard home screen lay
 Called on fresh install when no existing config or migration data exists.
 
 Display type mapping (Estuary → Altus):
-  WidgetListCategories → WidgetListCategory
+  WidgetListCategories → WidgetListCategory (written as section submenus)
   WidgetListPoster     → WidgetListPoster
   WidgetListEpisodes   → WidgetListLandscape
   WidgetListSquare     → WidgetListSquare
@@ -245,7 +245,7 @@ DEFAULT_SECTIONS = [
                 "$LOCALIZE[20388]",
                 "videodb://musicvideos/studios/",
                 "WidgetListCategory",
-                "music",
+                "videos",
                 "",
                 "",
             ),
@@ -492,7 +492,7 @@ DEFAULT_SECTIONS = [
         "onclick": "ActivateWindow(favouritesbrowser)",
         "icon": "icons/sidemenu/favourites.png",
         "widgets": [
-            ("$LOCALIZE[10134]", "favourites://", "WidgetListFavourites", "videos", "", ""),
+            ("$LOCALIZE[10134]", "favourites://", "WidgetListSquare", "videos", "", ""),
         ],
     },
     {
@@ -509,7 +509,19 @@ def create_default_sections():
 
     Only call when no existing config exists (fresh install, no migration).
     Returns True if sections were created.
+
+    Category entries are written as submenus of their section rather than as
+    Category walls. If one can't be listed right now it is written as a
+    Category widget instead; it still matches the defaults, so the next
+    migration run converts it. Genres, Studios, Sources and Playlists entries
+    in a section that also has a Categories node are skipped, since the node
+    already lists them.
     """
+    from modules.widget_manager.migration import (
+        category_submenu_entries,
+        is_listing_node,
+    )
+
     cm = ConfigManager()
     # Check if any sections already exist
     config = cm.get_full_config()
@@ -522,9 +534,23 @@ def create_default_sections():
             onclick=section_data["onclick"],
             icon=section_data.get("icon", ""),
         )
+        has_node = any(
+            w[2] == "WidgetListCategory" and is_listing_node(w[1])
+            for w in section_data["widgets"]
+        )
         for label, path, display_type, target, sortby, sortorder in section_data[
             "widgets"
         ]:
+            if display_type == "WidgetListCategory":
+                if has_node and not is_listing_node(path):
+                    continue
+                entries = category_submenu_entries(label, path, target)
+                if entries is not None:
+                    for entry_label, onclick, icon in entries:
+                        cm.add_submenu(
+                            section_id, entry_label, onclick=onclick, icon=icon
+                        )
+                    continue
             cm.add_widget(
                 section_id=section_id,
                 path=path,

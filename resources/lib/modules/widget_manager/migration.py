@@ -4,7 +4,7 @@ Migrates data from the old custom_paths table to the new sections/widgets schema
 Runs once automatically on first launch after update.
 Also supports importing configs from other skins (Nimbus, FENtastic).
 Reshapes configs for home walls: stacked widgets become sections of their own,
-node Category widgets become section submenus, and display types walls don't
+the skin's default Category widgets become section submenus, and display types walls don't
 have are remapped.
 """
 import json
@@ -85,12 +85,9 @@ WALL_TYPE_MAP = {
     "WidgetListFavourites": "WidgetListSquare",
 }
 
-# Category widgets over these listing nodes become submenus of their section:
-# a wall of category tiles is just a list of places to go. Any other Category
-# widget (genres, studios, playlists) lists content folders and becomes a
-# poster wall instead.
-CATEGORY_NODE_PREFIXES = ("library://", "addons://", "sources://")
-CATEGORY_NODE_PATHS = ("pvr://tv/", "pvr://radio/")
+# Category widgets the skin created by default (see default_config) become
+# submenus of their section: a wall of category tiles is just a list of places
+# to go. Category widgets someone made themselves are left as Category walls.
 
 # JSON-RPC's Files.GetDirectory refuses the add-ons root and pvr:// paths
 # (CFileUtils::RemoteAccessAllowed), so their entries are mirrored from Kodi
@@ -274,7 +271,7 @@ def _list_directory(path):
         "params": {
             "directory": path,
             "media": "files",
-            "properties": ["title", "file", "thumbnail"],
+            "properties": ["title", "file", "thumbnail", "art"],
         },
     }
     try:
@@ -303,60 +300,47 @@ def _with_slash(path):
     return path if path.endswith("/") else path + "/"
 
 
-def _is_category_node(path):
-    if path.startswith(CATEGORY_NODE_PREFIXES):
-        return True
-    return _with_slash(path) in CATEGORY_NODE_PATHS
+def is_listing_node(path):
+    """Whether a category path is a node whose items are themselves the
+    categories (library nodes, the add-ons root, PVR roots)."""
+    return path.startswith("library://") or _with_slash(path) in CATEGORY_NODE_ENTRIES
 
 
-def _list_sources(media):
-    """A media type's sources via Files.GetSources, or None if that failed."""
-    command = {
-        "jsonrpc": "2.0",
-        "id": "script.altus.helper",
-        "method": "Files.GetSources",
-        "params": {"media": media},
-    }
-    try:
-        response = json.loads(xbmc.executeJSONRPC(json.dumps(command)))
-    except Exception:
-        return None
-    result = response.get("result")
-    if result is None:
-        return None
-    return result.get("sources") or []
+def category_submenu_entries(label, path, target):
+    """(label, onclick, icon) submenu entries for a category.
 
-
-def _category_entries(widget):
-    """(label, onclick, icon) submenu entries for a node Category widget.
-
-    Returns None when the node can't be listed right now, so the caller leaves
-    the widget for the next run.
+    A listing node (library node, add-ons root, PVR root) gives one entry per
+    item. Anything else - genres, studios, playlists, sources - is itself one
+    category, so it gives a single entry that opens the path. Shared by the
+    migration, the default config and the widget manager's "add as submenu
+    entries" choice. Returns None when a node can't be listed right now.
     """
-    from modules.widget_manager.path_browser import build_onclick
+    from modules.widget_manager.path_browser import build_onclick, default_icon, item_icon
 
-    path = widget["path"]
+    if not is_listing_node(path):
+        return [(label, build_onclick(path, target), default_icon(path) or "DefaultFolder.png")]
     fixed = CATEGORY_NODE_ENTRIES.get(_with_slash(path))
     if fixed is not None:
         return list(fixed)
-    if path.startswith("sources://") and not path.startswith("sources://video"):
-        # Only video sources pass RemoteAccessAllowed; the rest come from
-        # Files.GetSources, which lists the same user sources.
-        media = path[len("sources://"):].strip("/")
-        sources = _list_sources(media)
-        if sources is None:
-            return None
-        return [
-            (s["label"], build_onclick(s["file"], widget["target"]), "")
-            for s in sources
-        ]
     items = _list_directory(path)
     if items is None:
         return None
     return [
-        (i["label"], build_onclick(i["file"], widget["target"]), i.get("thumbnail", ""))
+        (i["label"], build_onclick(i["file"], target), item_icon(i) or "DefaultFolder.png")
         for i in items
     ]
+
+
+def _default_category_widgets():
+    """(label, path) of every Category widget in the default config."""
+    from modules.widget_manager.default_config import DEFAULT_SECTIONS
+
+    return {
+        (label, path)
+        for section in DEFAULT_SECTIONS
+        for label, path, display_type, _target, _sortby, _sortorder in section["widgets"]
+        if display_type == "WidgetListCategory"
+    }
 
 
 def _expand_stacked_widgets(cm):
@@ -406,22 +390,36 @@ def _expand_stacked_widgets(cm):
 
 
 def _convert_category_widgets(cm):
-    """Move node Category widgets into their section's submenu.
+    """Move the skin's default Category widgets into their section's submenu.
 
-    Each entry becomes a submenu after the existing ones, built the way the
-    manager's multi-add builds them: label, onclick and icon. A hidden widget
-    gives hidden entries. As with stacked widgets, a node that can't be listed
-    right now is left for the next run. Category widgets over anything else
-    become poster walls.
+    A Category widget counts as default when its label and path both match an
+    entry in default_config, whatever section it sits in; one that was renamed,
+    repointed, imported from another skin or made in the manager stays a
+    Category wall. Each entry becomes a submenu after the existing ones: label,
+    onclick and icon. A hidden widget gives hidden entries. As with stacked
+    widgets, a path that can't be listed right now is left for the next run.
+
+    The default Genres, Studios, Sources and Playlists widgets sit next to a
+    Categories node that already lists them, so in a section that has such a
+    node they are removed without adding anything. Pictures' Sources has no
+    node beside it and still becomes an entry.
     """
+    defaults = _default_category_widgets()
     for section in cm.get_sections():
-        for widget in cm.get_widgets(section["id"]):
-            if widget["is_stacked"] or widget["display_type"] != "WidgetListCategory":
+        categories = [
+            w for w in cm.get_widgets(section["id"])
+            if not w["is_stacked"]
+            and w["display_type"] == "WidgetListCategory"
+            and (w["label"], w["path"]) in defaults
+        ]
+        has_node = any(is_listing_node(w["path"]) for w in categories)
+        for widget in categories:
+            if has_node and not is_listing_node(widget["path"]):
+                cm.remove_widget(widget["id"])
                 continue
-            if not _is_category_node(widget["path"]):
-                cm.update_widget(widget["id"], display_type="WidgetListPoster")
-                continue
-            entries = _category_entries(widget)
+            entries = category_submenu_entries(
+                widget["label"], widget["path"], widget["target"]
+            )
             if entries is None:
                 continue
             visible = "false" if widget["visible"] == "false" else ""
@@ -447,9 +445,9 @@ def _remap_wall_types(cm):
 def migrate_to_walls(cm=None):
     """Reshape the active widget config for home walls.
 
-    Safe to run any number of times: with no stacked widgets, Category widgets
-    or wall-less display types left, it changes nothing. Pass an open ConfigManager to
-    reuse it; otherwise one is opened and closed here.
+    Safe to run any number of times: with no stacked widgets, default Category
+    widgets or wall-less display types left, it changes nothing. Pass an open
+    ConfigManager to reuse it; otherwise one is opened and closed here.
     """
     own = cm is None
     if own:
