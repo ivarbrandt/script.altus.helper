@@ -3,7 +3,10 @@
 Migrates data from the old custom_paths table to the new sections/widgets schema.
 Runs once automatically on first launch after update.
 Also supports importing configs from other skins (Nimbus, FENtastic).
+Reshapes configs for home walls: stacked widgets become sections of their own
+and display types walls don't have are remapped.
 """
+import json
 import sqlite3 as database
 import xbmc, xbmcvfs, xbmcgui
 
@@ -69,6 +72,17 @@ OLD_SECTION_MAP = {
 }
 
 OLD_SECTION_ORDER = ["movie", "tvshow", "custom1", "custom2", "custom3"]
+
+# Display types home walls don't have, mapped to the wall that replaces them.
+# Flix variants exist for horizontal rows (reflection, slide-under), which a
+# wall has no use for.
+WALL_TYPE_MAP = {
+    "WidgetListSmallPosterFlix": "WidgetListSmallPoster",
+    "WidgetListLandscapeFlix": "WidgetListLandscape",
+    "WidgetListSmallLandscapeFlix": "WidgetListSmallLandscape",
+    "WidgetListBigPoster": "WidgetListPoster",
+    "WidgetListFavourites": "WidgetListSquare",
+}
 
 
 def _old_table_exists(db_path=None):
@@ -203,7 +217,128 @@ def _migrate_data(old_data, cm, migrate_skin_settings=False, type_map=None):
     return created
 
 
+def _wall_type(display_type):
+    """Map a display type (optionally Stacked-suffixed) to the one its wall uses."""
+    if display_type and display_type.endswith("Stacked"):
+        display_type = display_type[:-7]
+    return WALL_TYPE_MAP.get(display_type, display_type)
+
+
+def _list_subfolders(path):
+    """Subfolders of a stacked widget's path, or None if the listing failed.
+
+    Only directories count, matching what a stacked widget's child could load.
+    """
+    command = {
+        "jsonrpc": "2.0",
+        "id": "script.altus.helper",
+        "method": "Files.GetDirectory",
+        "params": {
+            "directory": path,
+            "media": "files",
+            "properties": ["title", "file"],
+        },
+    }
+    try:
+        response = json.loads(xbmc.executeJSONRPC(json.dumps(command)))
+    except Exception:
+        return None
+    result = response.get("result")
+    if result is None:
+        return None
+    return [f for f in result.get("files") or [] if f.get("filetype") == "directory"]
+
+
+def _expand_stacked_widgets(cm):
+    """Turn every stacked widget into a section with one tab per subfolder.
+
+    New sections go directly after their parent section, in widget order, and
+    inherit its icon. A widget whose folder can't be listed right now (addon
+    missing or disabled, network not up yet at startup) is left untouched so
+    the next run retries it; converting it to a fallback would be permanent.
+    A folder that lists fine but has no subfolders becomes a plain widget of
+    that folder instead.
+    """
+    from modules.widget_manager.path_browser import build_onclick
+
+    for section in cm.get_sections():
+        stacked = [w for w in cm.get_widgets(section["id"]) if w["is_stacked"]]
+        inserted = 0
+        for widget in stacked:
+            folders = _list_subfolders(widget["path"])
+            if folders is None:
+                continue
+            tab_type = _wall_type(widget["stacked_type"] or "WidgetListPoster")
+            if not folders:
+                cm.update_widget(
+                    widget["id"], is_stacked=0, stacked_type="", display_type=tab_type
+                )
+                continue
+            hidden = section["visible"] == "false" or widget["visible"] == "false"
+            new_id = cm.add_section(
+                widget["label"],
+                onclick=build_onclick(widget["path"], widget["target"]),
+                icon=section["icon"],
+                visible="false" if hidden else "",
+            )
+            inserted += 1
+            parent_position = cm.get_section(section["id"])["position"]
+            cm.reorder_section(new_id, parent_position + inserted)
+            for folder in folders:
+                cm.add_widget(
+                    section_id=new_id,
+                    path=folder["file"],
+                    label=folder["label"],
+                    display_type=tab_type,
+                    target=widget["target"],
+                )
+            cm.remove_widget(widget["id"])
+
+
+def _remap_wall_types(cm):
+    """Rewrite display types walls don't have, in both type columns."""
+    for old, new in WALL_TYPE_MAP.items():
+        cm.dbcur.execute(
+            "UPDATE widgets SET display_type = ? WHERE display_type = ?", (new, old)
+        )
+        cm.dbcur.execute(
+            "UPDATE widgets SET stacked_type = ? WHERE stacked_type = ?", (new, old)
+        )
+    cm.dbcon.commit()
+
+
+def migrate_to_walls(cm=None):
+    """Reshape the active widget config for home walls.
+
+    Safe to run any number of times: with no stacked widgets or wall-less
+    display types left, it changes nothing. Pass an open ConfigManager to
+    reuse it; otherwise one is opened and closed here.
+    """
+    own = cm is None
+    if own:
+        cm = ConfigManager()
+    try:
+        _expand_stacked_widgets(cm)
+        _remap_wall_types(cm)
+    finally:
+        if own:
+            cm.close()
+
+
 def migrate():
+    """Bring the widget config up to date. Returns True if custom_paths data was migrated.
+
+    Runs the one-time custom_paths import, then reshapes whatever config is
+    active for walls. The walls step repeats safely, so every caller of
+    migrate() gets it, including configs that finished the old migration
+    long ago.
+    """
+    result = _migrate_custom_paths()
+    migrate_to_walls()
+    return result
+
+
+def _migrate_custom_paths():
     """Migrate old custom_paths data to the new schema. Returns True if migration ran."""
     if not _old_table_exists():
         return False
@@ -274,6 +409,8 @@ def import_from_skin():
     for section in cm.get_sections():
         cm.remove_section(section["id"])
     result = _migrate_data(old_data, cm, type_map=chosen_type_map)
+    if result:
+        migrate_to_walls(cm)
     cm.close()
     if result:
         # Other skins carry no search config, so an import would otherwise fall
