@@ -101,7 +101,36 @@ def _ensure_schema(con):
         )
         """
     )
+    _convert_flix_types(con)
     con.commit()
+
+
+# Flix rows were removed from the skin. The generator writes a widget's
+# display_type (and a stacked widget's child type) straight into an include
+# name, so a saved Flix type would point at an include that no longer exists.
+# Each maps to the same row without the Flix treatment.
+_FLIX_TYPES = {
+    "WidgetListSmallPosterFlix": "WidgetListSmallPoster",
+    "WidgetListLandscapeFlix": "WidgetListLandscape",
+    "WidgetListSmallLandscapeFlix": "WidgetListSmallLandscape",
+    "WidgetListSmallPosterFlixStacked": "WidgetListSmallPosterStacked",
+    "WidgetListLandscapeFlixStacked": "WidgetListLandscapeStacked",
+    "WidgetListSmallLandscapeFlixStacked": "WidgetListSmallLandscapeStacked",
+}
+
+
+def _convert_flix_types(con):
+    """Rewrite saved Flix display and child types to their plain rows.
+
+    Runs whenever a search config is opened, so every profile's file converts
+    the first time it's used; with nothing left to convert it's two no-op
+    updates.
+    """
+    for column in ("display_type", "stacked_type"):
+        con.executemany(
+            "UPDATE search_widget SET %s = ? WHERE %s = ?" % (column, column),
+            [(new, old) for old, new in _FLIX_TYPES.items()],
+        )
 
 
 class ConfigManager:

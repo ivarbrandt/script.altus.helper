@@ -41,10 +41,17 @@ def check_for_update(skin_id):
     # safe to repeat, so treating the second case as an update costs nothing.
     from modules.widget_manager.migration import migrate
     from modules.widget_manager.xml_generator import generate_and_reload
+    from modules.search_manager.xml_generator import (
+        generate_and_reload as generate_search_xml,
+    )
 
     migrate()
     set_installed_version(skin_id, installed_version)
     sleep(1000)
+    # Search widgets are rendered from the search config too; opening it
+    # converts any row types the update retired, and the rewrite keeps the
+    # generated file from naming includes the new skin no longer has.
+    generate_search_xml(reload_skin=False)
     generate_and_reload()
 
 

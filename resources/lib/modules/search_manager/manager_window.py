@@ -162,11 +162,8 @@ DISPLAY_TYPE_MAP = {
     "WidgetListBigPoster": "Big Poster",
     "WidgetListPoster": "Poster",
     "WidgetListSmallPoster": "Small Poster",
-    "WidgetListSmallPosterFlix": "Small Poster - Flix",
     "WidgetListLandscape": "Landscape",
-    "WidgetListLandscapeFlix": "Landscape - Flix",
     "WidgetListSmallLandscape": "Small Landscape",
-    "WidgetListSmallLandscapeFlix": "Small Landscape - Flix",
     "WidgetListSquare": "Square",
     "WidgetListCategoryStacked": "Category (Stacked)",
 }
@@ -176,11 +173,8 @@ SEARCH_DISPLAY_TYPES = [
     ("Big Poster", "WidgetListBigPoster"),
     ("Poster", "WidgetListPoster"),
     ("Small Poster", "WidgetListSmallPoster"),
-    ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
     ("Landscape", "WidgetListLandscape"),
-    ("Landscape - Flix", "WidgetListLandscapeFlix"),
     ("Small Landscape", "WidgetListSmallLandscape"),
-    ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
     ("Square", "WidgetListSquare"),
 ]
 

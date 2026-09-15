@@ -84,22 +84,16 @@ widget_types = (
     ("Big Poster", "WidgetListBigPoster"),
     ("Poster", "WidgetListPoster"),
     ("Small Poster", "WidgetListSmallPoster"),
-    ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
     ("Landscape", "WidgetListLandscape"),
-    ("Landscape - Flix", "WidgetListLandscapeFlix"),
     ("Small Landscape", "WidgetListSmallLandscape"),
-    ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
     ("Category", "WidgetListCategory"),
 )
 stacked_widget_types = (
     ("Big Poster", "WidgetListBigPoster"),
     ("Poster", "WidgetListPoster"),
     ("Small Poster", "WidgetListSmallPoster"),
-    ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
     ("Landscape", "WidgetListLandscape"),
-    ("Landscape - Flix", "WidgetListLandscapeFlix"),
     ("Small Landscape", "WidgetListSmallLandscape"),
-    ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
 )
 default_path = "addons://sources/video"
 
