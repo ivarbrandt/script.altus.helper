@@ -3,7 +3,6 @@
 import time
 import xbmc, xbmcgui, xbmcvfs
 import sqlite3 as database
-from modules import xmls
 from urllib.parse import quote
 
 # from modules.logger import logger
@@ -15,11 +14,6 @@ SETTINGS_PATH = xbmcvfs.translatePath(
 SEARCH_DATABASE_PATH = xbmcvfs.translatePath(
     "special://profile/addon_data/script.altus.helper/spath_cache.db"
 )
-
-# How long a confirmed or history search waits for its stacked parents to
-# load before giving up on priming their children. Slow plugins can take a
-# while; focusing the parent still loads the child the usual way.
-STACKED_PRIME_TIMEOUT_MS = 15000
 
 
 def profile_history_path(profile):
@@ -57,12 +51,6 @@ def _get_history_db_path(profile=None):
         except Exception:
             profile = ""
     return profile_history_path(profile)
-
-search_history_xml = "script-altus-search_history"
-
-default_xmls = {
-    "search_history": (search_history_xml, xmls.default_history, "SearchHistory")
-}
 
 default_path = "addons://sources/video"
 
@@ -354,6 +342,7 @@ class SPaths:
         # has loadable widget containers to land on.
         from modules.monitors.live_search import (
             COMMITTED_TERM_PROPERTY,
+            prime_stacked_children,
             write_resolved_widget_paths,
         )
 
@@ -366,68 +355,10 @@ class SPaths:
             # re_search moves focus itself once this returns, then primes.
             return generation
         xbmc.executebuiltin("SetFocus(2000)")
-        self._prime_stacked_children(generation)
-
-    def _prime_stacked_children(self, generation):
-        """Load the first child of each stacked search widget.
-
-        The live monitor only refreshes while the edit control is visible, so a
-        confirmed or history search never reaches its stacked-child priming.
-
-        The parent container is already fetching the same listing, so the
-        child's first item is read from it once it has loaded, rather than
-        running the plugin a second time over JSON-RPC alongside the parent's
-        own fetch. Nothing here touches focus, so the history flow (and its
-        altus.search.from cleanup) stays exactly as re_search left it.
-        InfoLabels are safe to read from this script's thread.
-        """
-        if generation is None:
-            return
-        from modules.monitors.live_search import GENERATION_PROPERTY
-        from modules.search_manager.xml_generator import iter_visible_widgets_with_ids
-
-        pending = [
-            list_id
-            for list_id, w in iter_visible_widgets_with_ids()
-            if w.get("is_stacked")
-        ]
-        monitor = xbmc.Monitor()
-        waited = 0
-        while pending and waited < STACKED_PRIME_TIMEOUT_MS:
-            if (
-                self.home_window.getProperty(GENERATION_PROPERTY) != generation
-                or not xbmc.getCondVisibility("Window.IsVisible(1121)")
-            ):
-                return
-            for list_id in list(pending):
-                # Right after the path is written the container may not have
-                # started updating yet, so wait for items, not just for
-                # IsUpdating to be false.
-                if xbmc.getCondVisibility(
-                    "Container(%s).IsUpdating | !Integer.IsGreater(Container(%s).NumItems,0)"
-                    % (list_id, list_id)
-                ):
-                    continue
-                pending.remove(list_id)
-                path = xbmc.getInfoLabel(
-                    "Container(%s).ListItemAbsolute(0).FolderPath" % list_id
-                )
-                if not path or not xbmc.getCondVisibility(
-                    "Container(%s).ListItemAbsolute(0).IsFolder" % list_id
-                ):
-                    continue
-                label = xbmc.getInfoLabel(
-                    "Container(%s).ListItemAbsolute(0).Label" % list_id
-                )
-                self.home_window.setProperty(
-                    "altus.search.child.%s.label" % list_id, label
-                )
-                self.home_window.setProperty(
-                    "altus.search.child.%s.path" % list_id, path
-                )
-            if monitor.waitForAbort(0.1):
-                return
-            waited += 100
+        # The live monitor only refreshes while the edit control is visible, so
+        # a confirmed or history search primes its own stacked children, after
+        # the focus move since priming waits for the parents to load.
+        prime_stacked_children(generation)
 
     def commit_live_search_history(self):
         """Commit the current live-search input to history (P8e).
@@ -459,7 +390,9 @@ class SPaths:
         xbmc.executebuiltin("SetFocus(9000,0,absolute)")
         xbmc.sleep(300)
         xbmc.executebuiltin("SetFocus(2000)")
-        self._prime_stacked_children(generation)
+        from modules.monitors.live_search import prime_stacked_children
+
+        prime_stacked_children(generation)
 
     def toggle_search_filter(self, kind):
         """Toggle a kind in the live-mode filter pill panel (P8c).
