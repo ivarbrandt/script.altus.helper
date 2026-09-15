@@ -203,19 +203,51 @@ def _build_tab_item_xml(widget, list_id):
     )
 
 
+MANUAL_LOADING_SETTING = "Skin.HasSetting(HomeWalls.ManualLoading)"
+
+
+def _shown_wall_property(row_id):
+    """Home window property holding the list id of the wall a section shows
+    in manual tab loading. Set by the tab row's down action; empty means the
+    section's first wall."""
+    return "altus_wall_%s" % row_id
+
+
+def _wall_visible_condition(widget, list_id, row_id):
+    """Visibility of one wall for both tab loading modes.
+
+    Auto shows the wall of the highlighted tab. Manual shows the wall last
+    entered from the tab row, so highlighting a tab doesn't show (and
+    allocate) its wall. Until one has been entered it shows the wall of the
+    first tab still in the row, skipping tabs hidden for being empty.
+    """
+    prop = "Window(Home).Property(%s)" % _shown_wall_property(row_id)
+    manual = "[String.IsEqual({prop},{list_id}) | [String.IsEmpty({prop}) + String.IsEqual(Container({row_id}).ListItemAbsolute(0).Property(wall_id),{list_id})]]".format(
+        prop=prop,
+        list_id=list_id,
+        row_id=row_id,
+    )
+    return "[!{setting} + Container({row_id}).HasFocus({item_id})] | [{setting} + {manual}]".format(
+        setting=MANUAL_LOADING_SETTING,
+        row_id=row_id,
+        item_id=widget["position"],
+        manual=manual,
+    )
+
+
 def _build_wall_xml(widget, list_id, row_id):
     """Generate the wall include call for one widget."""
     xml = """
         <include content="{include}">
           <param name="list_id" value="{list_id}"/>
           <param name="row_id" value="{row_id}"/>
-          <param name="visible" value="Container({row_id}).HasFocus({item_id})"/>
+          <param name="visible" value="{visible}"/>
           <param name="content_path" value="{path}"/>
           <param name="widget_target" value="{target}"/>""".format(
         include=_wall_include(widget),
         list_id=list_id,
         row_id=row_id,
-        item_id=widget["position"],
+        visible=_wall_visible_condition(widget, list_id, row_id),
         path=_escape_ampersand(widget["path"]),
         target=widget["target"],
     )
@@ -256,9 +288,6 @@ def _build_wall_section_xml(section_pos, widgets):
       <include content="Section_Visible_Right_Delayed">
         <param name="menu_id" value="{group_id}"/>
       </include>
-      <include content="HomeWallSectionSlide">
-        <param name="section_id" value="{group_id}"/>
-      </include>
       <include content="HomeWallHeader">
         <param name="section_id" value="{group_id}"/>
         <param name="row_id" value="{row_id}"/>
@@ -274,6 +303,7 @@ def _build_wall_section_xml(section_pos, widgets):
       <control type="group" id="{walls_id}">
         <include content="HomeWallsGroup">
           <param name="walls_id" value="{walls_id}"/>
+          <param name="row_id" value="{row_id}"/>
         </include>{walls}
       </control>
     </control>""".format(
@@ -696,4 +726,18 @@ def generate_and_reload(active_config=None):
     _write_xml(MAIN_MENU_XML_FILE, menu_xml)
     _write_xml(SUBMENUS_XML_FILE, submenus_xml)
     _auto_save_profile(active_config)
+    _clear_shown_wall_properties(config)
     Thread(target=_reload_skin).start()
+
+
+def _clear_shown_wall_properties(config):
+    """Forget which wall each section shows in manual tab loading.
+
+    Widget positions (and so list ids) can change with the rebuild, which
+    would leave a section pointing at a wall that no longer exists; cleared,
+    every section starts back on its first wall.
+    """
+    window = xbmcgui.Window(10000)
+    for section_data in config.values():
+        row_id = _compute_row_id(section_data["section"]["position"])
+        window.clearProperty(_shown_wall_property(row_id))
