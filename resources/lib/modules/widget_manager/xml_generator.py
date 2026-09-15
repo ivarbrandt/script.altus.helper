@@ -2,9 +2,8 @@
 """
 XML Generation Engine for the widget management system.
 Reads config from ConfigManager and generates:
-  - script-altus-widgets.xml      (per-section widget includes)
+  - script-altus-home_walls.xml   (per-section tab row + one wall per widget)
   - script-altus-main_menu.xml    (all sections as main menu items)
-  - script-altus-home_groups.xml  (per-section group/grouplist structure)
   - script-altus-submenus.xml     (per-section submenu lists for home screen)
 """
 import xbmc, xbmcvfs, xbmcgui
@@ -15,13 +14,33 @@ from modules.widget_manager.config_manager import ConfigManager
 WIDGETS_XML_FILE = "special://skin/xml/script-altus-widgets.xml"
 MAIN_MENU_XML_FILE = "special://skin/xml/script-altus-main_menu.xml"
 HOME_GROUPS_XML_FILE = "special://skin/xml/script-altus-home_groups.xml"
+HOME_WALLS_XML_FILE = "special://skin/xml/script-altus-home_walls.xml"
 SUBMENUS_XML_FILE = "special://skin/xml/script-altus-submenus.xml"
 # Base ID for all widget-related controls. Each section occupies a 100-ID range:
 #   section base = BASE_ID + (section_position - 1) * 100
-#   group = base, grouplist = base + 1, pagecontrol = base + 99
-#   widget list_id = base + 10 + widget_position
+#   group = base, tab row = base + 2, walls group = base + 3
+#   widget list_id (its wall) = base + 10 + widget_position
 # Supports up to 60 sections (3000-8999) and 89 widgets per section.
 BASE_ID = 3000
+
+# Wall include for each stored display type. Walls have no Flix or big
+# poster variants; migration remaps those, but a saved profile loaded without
+# migrating can still carry them, so they map here too. Anything unknown falls
+# back to a poster wall.
+WALL_INCLUDES = {
+    "WidgetListPoster": "HomeWallPoster",
+    "WidgetListBigPoster": "HomeWallPoster",
+    "WidgetListSmallPoster": "HomeWallSmallPoster",
+    "WidgetListSmallPosterFlix": "HomeWallSmallPoster",
+    "WidgetListLandscape": "HomeWallLandscape",
+    "WidgetListLandscapeFlix": "HomeWallLandscape",
+    "WidgetListSmallLandscape": "HomeWallSmallLandscape",
+    "WidgetListSmallLandscapeFlix": "HomeWallSmallLandscape",
+    "WidgetListSquare": "HomeWallSquare",
+    "WidgetListFavourites": "HomeWallSquare",
+    "WidgetListCategory": "HomeWallCategory",
+    "WidgetListPVR": "HomeWallPVR",
+}
 
 # Hardcoded icon overrides for specific widget paths. Keyed by widget path,
 # value is emitted as the `icon` param on the include.
@@ -58,6 +77,16 @@ def _compute_grouplist_id(section_position):
 def _compute_pagecontrol_id(section_position):
     """Compute the pagecontrol (scrollbar) ID for a section."""
     return _compute_section_base(section_position) + 99
+
+
+def _compute_row_id(section_position):
+    """Compute the tab row control ID for a section (base + 2)."""
+    return _compute_section_base(section_position) + 2
+
+
+def _compute_walls_id(section_position):
+    """Compute the walls group control ID for a section (base + 3)."""
+    return _compute_section_base(section_position) + 3
 
 
 def _compute_submenu_list_id(section_position):
@@ -138,6 +167,153 @@ def _build_stacked_widget_xml(widget, list_id):
         child_id=child_id,
         child_type=child_type,
     )
+
+
+def _wall_include(widget):
+    """Pick the wall include for a widget.
+
+    A stacked widget still here couldn't be migrated (its folder didn't list),
+    so its wall shows the folder itself as categories.
+    """
+    if widget["is_stacked"]:
+        return "HomeWallCategory"
+    return WALL_INCLUDES.get(widget["display_type"], "HomeWallPoster")
+
+
+def _build_tab_item_xml(widget, list_id):
+    """Generate the tab row item for one widget.
+
+    The item id is the widget position, which is what the wall's
+    Container(row).HasFocus() visibility matches. Clicking opens the widget's
+    content in its own window. Tabs of walls that ended up empty hide.
+    """
+    from modules.widget_manager.path_browser import build_onclick
+
+    return """
+          <item id="{item_id}">
+            <label>{label}</label>
+            <onclick>{onclick}</onclick>
+            <property name="wall_id">$NUMBER[{list_id}]</property>
+            <visible>Integer.IsGreater(Container({list_id}).NumItems,0) | Container({list_id}).IsUpdating</visible>
+          </item>""".format(
+        item_id=widget["position"],
+        label=_escape_ampersand(widget["label"]),
+        onclick=_escape_ampersand(build_onclick(widget["path"], widget["target"])),
+        list_id=list_id,
+    )
+
+
+def _build_wall_xml(widget, list_id, row_id):
+    """Generate the wall include call for one widget."""
+    xml = """
+        <include content="{include}">
+          <param name="list_id" value="{list_id}"/>
+          <param name="row_id" value="{row_id}"/>
+          <param name="visible" value="Container({row_id}).HasFocus({item_id})"/>
+          <param name="content_path" value="{path}"/>
+          <param name="widget_target" value="{target}"/>""".format(
+        include=_wall_include(widget),
+        list_id=list_id,
+        row_id=row_id,
+        item_id=widget["position"],
+        path=_escape_ampersand(widget["path"]),
+        target=widget["target"],
+    )
+    if widget.get("sortby"):
+        xml += '\n          <param name="sortby" value="%s"/>' % widget["sortby"]
+    if widget.get("sortorder"):
+        xml += '\n          <param name="sortorder" value="%s"/>' % widget["sortorder"]
+    if widget.get("limit_num"):
+        xml += '\n          <param name="limit" value="%s"/>' % widget["limit_num"]
+    icon = HARDCODED_WIDGET_ICONS.get(widget["path"])
+    if icon:
+        xml += '\n          <param name="icon" value="%s"/>' % icon
+    if widget["path"].startswith("addons://"):
+        xml += '\n          <param name="fallback_icon" value="DefaultAddon.png"/>'
+    xml += "\n        </include>"
+    return xml
+
+
+def _build_wall_section_xml(section_pos, widgets):
+    """Generate one section: header, tab row and a wall per widget.
+
+    The group's defaultcontrol is the tab row, not always, so coming back from
+    the main menu restores whichever of row or wall had focus last.
+    """
+    group_id = _compute_group_id(section_pos)
+    row_id = _compute_row_id(section_pos)
+    walls_id = _compute_walls_id(section_pos)
+    tabs = ""
+    walls = ""
+    for widget in widgets:
+        list_id = _compute_list_id(section_pos, widget["position"])
+        tabs += _build_tab_item_xml(widget, list_id)
+        walls += _build_wall_xml(widget, list_id, row_id)
+    return """
+    <control type="group" id="{group_id}">
+      <visible>String.IsEqual(Container(9000).ListItem.Property(menu_id),{group_id})</visible>
+      <defaultcontrol>{row_id}</defaultcontrol>
+      <include content="Section_Visible_Right_Delayed">
+        <param name="menu_id" value="{group_id}"/>
+      </include>
+      <include content="HomeWallSectionSlide">
+        <param name="section_id" value="{group_id}"/>
+      </include>
+      <include content="HomeWallHeader">
+        <param name="section_id" value="{group_id}"/>
+        <param name="row_id" value="{row_id}"/>
+      </include>
+      <control type="fixedlist" id="{row_id}">
+        <include content="HomeWallTabRow">
+          <param name="row_id" value="{row_id}"/>
+          <param name="walls_id" value="{walls_id}"/>
+        </include>
+        <content>{tabs}
+        </content>
+      </control>
+      <control type="group" id="{walls_id}">
+        <include content="HomeWallsGroup">
+          <param name="walls_id" value="{walls_id}"/>
+        </include>{walls}
+      </control>
+    </control>""".format(
+        group_id=group_id,
+        row_id=row_id,
+        walls_id=walls_id,
+        tabs=tabs,
+        walls=walls,
+    )
+
+
+def generate_home_walls_xml(config):
+    """Generate the home screen sections as tab rows and walls.
+
+    Hidden sections, hidden widgets and the weather section (hardcoded in
+    Home.xml) are skipped, as is any section left without visible widgets.
+
+    Args:
+        config: dict from ConfigManager.get_full_config()
+    Returns:
+        XML string with the HomeWalls include.
+    """
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<includes>\n  <include name="HomeWalls">'
+    for section_id in sorted(
+        config, key=lambda sid: config[sid]["section"]["position"]
+    ):
+        section_data = config[section_id]
+        section = section_data["section"]
+        if section.get("visible") == "false":
+            continue
+        if section["name"] == "$LOCALIZE[8]":
+            continue
+        widgets = [
+            w for w in section_data["widgets"] if w.get("visible") != "false"
+        ]
+        if not widgets:
+            continue
+        xml += _build_wall_section_xml(section["position"], widgets)
+    xml += "\n  </include>\n</includes>"
+    return xml
 
 
 def _build_menu_item_xml(section, group_id, submenu_list_id=None):
@@ -503,13 +679,11 @@ def generate_and_reload(active_config=None):
     cm = ConfigManager()
     config = cm.get_full_config()
     cm.close()
-    widgets_xml = generate_widgets_xml(config)
+    home_walls_xml = generate_home_walls_xml(config)
     menu_xml = generate_main_menu_xml(config)
-    home_groups_xml = generate_home_groups_xml(config)
     submenus_xml = generate_submenus_xml(config)
-    _write_xml(WIDGETS_XML_FILE, widgets_xml)
+    _write_xml(HOME_WALLS_XML_FILE, home_walls_xml)
     _write_xml(MAIN_MENU_XML_FILE, menu_xml)
-    _write_xml(HOME_GROUPS_XML_FILE, home_groups_xml)
     _write_xml(SUBMENUS_XML_FILE, submenus_xml)
     _auto_save_profile(active_config)
     Thread(target=_reload_skin).start()

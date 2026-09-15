@@ -307,6 +307,10 @@ def build_onclick(path, target):
             return "ActivateWindow(TVChannels)"
         if "channels/radio" in path:
             return "ActivateWindow(RadioChannels)"
+        if "guide/tv" in path:
+            return "ActivateWindow(TVGuide)"
+        if "guide/radio" in path:
+            return "ActivateWindow(RadioGuide)"
         if "recordings/tv" in path:
             return "ActivateWindow(TVRecordings)"
         if "recordings/radio" in path:

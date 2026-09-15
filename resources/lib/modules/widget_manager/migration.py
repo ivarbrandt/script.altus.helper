@@ -3,8 +3,9 @@
 Migrates data from the old custom_paths table to the new sections/widgets schema.
 Runs once automatically on first launch after update.
 Also supports importing configs from other skins (Nimbus, FENtastic).
-Reshapes configs for home walls: stacked widgets become sections of their own
-and display types walls don't have are remapped.
+Reshapes configs for home walls: stacked widgets become sections of their own,
+node Category widgets become section submenus, and display types walls don't
+have are remapped.
 """
 import json
 import sqlite3 as database
@@ -82,6 +83,46 @@ WALL_TYPE_MAP = {
     "WidgetListSmallLandscapeFlix": "WidgetListSmallLandscape",
     "WidgetListBigPoster": "WidgetListPoster",
     "WidgetListFavourites": "WidgetListSquare",
+}
+
+# Category widgets over these listing nodes become submenus of their section:
+# a wall of category tiles is just a list of places to go. Any other Category
+# widget (genres, studios, playlists) lists content folders and becomes a
+# poster wall instead.
+CATEGORY_NODE_PREFIXES = ("library://", "addons://", "sources://")
+CATEGORY_NODE_PATHS = ("pvr://tv/", "pvr://radio/")
+
+# JSON-RPC's Files.GetDirectory refuses the add-ons root and pvr:// paths
+# (CFileUtils::RemoteAccessAllowed), so their entries are mirrored from Kodi
+# 21's own root lists (CAddonsDirectory RootDirectory, CPVRGUIDirectory
+# GetRootDirectory): same string ids, icons and target windows. Available
+# updates is kept even though Kodi only lists it while updates exist; the
+# transient downloading and recently updated entries are left out. Search needs
+# no special handling: an empty addons://search/ path opens the keyboard.
+_PVR_ROOT = [
+    (19069, "Guide", "DefaultPVRGuide.png"),
+    (19019, "Channels", "DefaultPVRChannels.png"),
+    (19017, "Recordings", "DefaultPVRRecordings.png"),
+    (19040, "Timers", "DefaultPVRTimers.png"),
+    (19138, "TimerRules", "DefaultPVRTimerRules.png"),
+    (137, "Search", "DefaultPVRSearch.png"),
+]
+CATEGORY_NODE_ENTRIES = {
+    "addons://": [
+        ("$LOCALIZE[24998]", "ActivateWindow(AddonBrowser,addons://user/,return)", "DefaultAddonsInstalled.png"),
+        ("$LOCALIZE[24043]", "ActivateWindow(AddonBrowser,addons://outdated/,return)", "DefaultAddonsUpdates.png"),
+        ("$LOCALIZE[24033]", "ActivateWindow(AddonBrowser,addons://repos/,return)", "DefaultAddonsRepo.png"),
+        ("$LOCALIZE[24041]", "InstallFromZip", "DefaultAddonsZip.png"),
+        ("$LOCALIZE[137]", "ActivateWindow(AddonBrowser,addons://search/,return)", "DefaultAddonsSearch.png"),
+    ],
+    "pvr://tv/": [
+        ("$LOCALIZE[%d]" % sid, "ActivateWindow(TV%s)" % window, icon)
+        for sid, window, icon in _PVR_ROOT
+    ],
+    "pvr://radio/": [
+        ("$LOCALIZE[%d]" % sid, "ActivateWindow(Radio%s)" % window, icon)
+        for sid, window, icon in _PVR_ROOT
+    ],
 }
 
 
@@ -224,11 +265,8 @@ def _wall_type(display_type):
     return WALL_TYPE_MAP.get(display_type, display_type)
 
 
-def _list_subfolders(path):
-    """Subfolders of a stacked widget's path, or None if the listing failed.
-
-    Only directories count, matching what a stacked widget's child could load.
-    """
+def _list_directory(path):
+    """Items of a path via JSON-RPC, or None if the listing failed."""
     command = {
         "jsonrpc": "2.0",
         "id": "script.altus.helper",
@@ -236,7 +274,7 @@ def _list_subfolders(path):
         "params": {
             "directory": path,
             "media": "files",
-            "properties": ["title", "file"],
+            "properties": ["title", "file", "thumbnail"],
         },
     }
     try:
@@ -246,7 +284,79 @@ def _list_subfolders(path):
     result = response.get("result")
     if result is None:
         return None
-    return [f for f in result.get("files") or [] if f.get("filetype") == "directory"]
+    return result.get("files") or []
+
+
+def _list_subfolders(path):
+    """Subfolders of a stacked widget's path, or None if the listing failed.
+
+    Only directories count, matching what a stacked widget's child could load.
+    """
+    items = _list_directory(path)
+    if items is None:
+        return None
+    return [f for f in items if f.get("filetype") == "directory"]
+
+
+def _with_slash(path):
+    """Path with one trailing slash; rstrip would eat the "//" of "addons://"."""
+    return path if path.endswith("/") else path + "/"
+
+
+def _is_category_node(path):
+    if path.startswith(CATEGORY_NODE_PREFIXES):
+        return True
+    return _with_slash(path) in CATEGORY_NODE_PATHS
+
+
+def _list_sources(media):
+    """A media type's sources via Files.GetSources, or None if that failed."""
+    command = {
+        "jsonrpc": "2.0",
+        "id": "script.altus.helper",
+        "method": "Files.GetSources",
+        "params": {"media": media},
+    }
+    try:
+        response = json.loads(xbmc.executeJSONRPC(json.dumps(command)))
+    except Exception:
+        return None
+    result = response.get("result")
+    if result is None:
+        return None
+    return result.get("sources") or []
+
+
+def _category_entries(widget):
+    """(label, onclick, icon) submenu entries for a node Category widget.
+
+    Returns None when the node can't be listed right now, so the caller leaves
+    the widget for the next run.
+    """
+    from modules.widget_manager.path_browser import build_onclick
+
+    path = widget["path"]
+    fixed = CATEGORY_NODE_ENTRIES.get(_with_slash(path))
+    if fixed is not None:
+        return list(fixed)
+    if path.startswith("sources://") and not path.startswith("sources://video"):
+        # Only video sources pass RemoteAccessAllowed; the rest come from
+        # Files.GetSources, which lists the same user sources.
+        media = path[len("sources://"):].strip("/")
+        sources = _list_sources(media)
+        if sources is None:
+            return None
+        return [
+            (s["label"], build_onclick(s["file"], widget["target"]), "")
+            for s in sources
+        ]
+    items = _list_directory(path)
+    if items is None:
+        return None
+    return [
+        (i["label"], build_onclick(i["file"], widget["target"]), i.get("thumbnail", ""))
+        for i in items
+    ]
 
 
 def _expand_stacked_widgets(cm):
@@ -295,6 +405,33 @@ def _expand_stacked_widgets(cm):
             cm.remove_widget(widget["id"])
 
 
+def _convert_category_widgets(cm):
+    """Move node Category widgets into their section's submenu.
+
+    Each entry becomes a submenu after the existing ones, built the way the
+    manager's multi-add builds them: label, onclick and icon. A hidden widget
+    gives hidden entries. As with stacked widgets, a node that can't be listed
+    right now is left for the next run. Category widgets over anything else
+    become poster walls.
+    """
+    for section in cm.get_sections():
+        for widget in cm.get_widgets(section["id"]):
+            if widget["is_stacked"] or widget["display_type"] != "WidgetListCategory":
+                continue
+            if not _is_category_node(widget["path"]):
+                cm.update_widget(widget["id"], display_type="WidgetListPoster")
+                continue
+            entries = _category_entries(widget)
+            if entries is None:
+                continue
+            visible = "false" if widget["visible"] == "false" else ""
+            for label, onclick, icon in entries:
+                cm.add_submenu(
+                    section["id"], label, onclick=onclick, icon=icon, visible=visible
+                )
+            cm.remove_widget(widget["id"])
+
+
 def _remap_wall_types(cm):
     """Rewrite display types walls don't have, in both type columns."""
     for old, new in WALL_TYPE_MAP.items():
@@ -310,8 +447,8 @@ def _remap_wall_types(cm):
 def migrate_to_walls(cm=None):
     """Reshape the active widget config for home walls.
 
-    Safe to run any number of times: with no stacked widgets or wall-less
-    display types left, it changes nothing. Pass an open ConfigManager to
+    Safe to run any number of times: with no stacked widgets, Category widgets
+    or wall-less display types left, it changes nothing. Pass an open ConfigManager to
     reuse it; otherwise one is opened and closed here.
     """
     own = cm is None
@@ -319,6 +456,7 @@ def migrate_to_walls(cm=None):
         cm = ConfigManager()
     try:
         _expand_stacked_widgets(cm)
+        _convert_category_widgets(cm)
         _remap_wall_types(cm)
     finally:
         if own:
