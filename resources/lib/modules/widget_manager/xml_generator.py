@@ -316,7 +316,7 @@ def generate_home_walls_xml(config):
     return xml
 
 
-def _build_menu_item_xml(section, group_id, submenu_list_id=None):
+def _build_menu_item_xml(section, group_id, submenu_list_id=None, has_walls=True):
     """Generate XML for a single main menu item.
 
     Each section automatically gets a visibility condition tied to its DB id,
@@ -324,6 +324,9 @@ def _build_menu_item_xml(section, group_id, submenu_list_id=None):
     Weather sections get special multi-onclick handling and id=weather.
     menu_id is the group ID so SetFocus cascades to the grouplist inside,
     matching how weather (15000) works.
+    A section without visible widgets generates no group, so its item is
+    marked no_walls and Home's onright leaves focus on the menu. menu_id stays,
+    since its submenu list is still tied to it.
     """
     if section["name"] == "$LOCALIZE[8]":
         xml = """
@@ -349,18 +352,22 @@ def _build_menu_item_xml(section, group_id, submenu_list_id=None):
             submenu_prop = '\n      <property name="submenu_id">$NUMBER[{id}]</property>'.format(
                 id=submenu_list_id
             )
+        walls_prop = ""
+        if not has_walls:
+            walls_prop = '\n      <property name="no_walls">true</property>'
         xml = """
     <item>
       <label>{name}</label>
       <onclick>{onclick}</onclick>
       <property name="menu_id">$NUMBER[{menu_id}]</property>
-      <property name="id">widgets</property>{icon_prop}{submenu_prop}
+      <property name="id">widgets</property>{icon_prop}{submenu_prop}{walls_prop}
     </item>""".format(
             name=_escape_ampersand(section["name"]),
             onclick=_escape_ampersand(section["onclick"]),
             menu_id=group_id,
             icon_prop=icon_prop,
             submenu_prop=submenu_prop,
+            walls_prop=walls_prop,
         )
     return xml
 
@@ -427,7 +434,10 @@ def generate_main_menu_xml(config):
             _compute_submenu_list_id(section["position"])
             if visible_submenus else None
         )
-        xml += _build_menu_item_xml(section, group_id, submenu_list_id)
+        has_walls = any(
+            w.get("visible") != "false" for w in section_data["widgets"]
+        )
+        xml += _build_menu_item_xml(section, group_id, submenu_list_id, has_walls)
     xml += "\n  </include>\n</includes>"
     return xml
 
