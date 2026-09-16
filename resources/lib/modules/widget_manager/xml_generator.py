@@ -135,20 +135,61 @@ def _shown_wall_property(row_id):
     return "altus_wall_%s" % row_id
 
 
-def _wall_visible_condition(widget, list_id, row_id):
+def _wall_has_items(list_id):
+    """A wall is usable while it holds items or is still fetching them. This
+    is what the tab's own visibility uses, so it matches whether the tab for
+    this wall is in the row."""
+    return "[Integer.IsGreater(Container({list_id}).NumItems,0) | Container({list_id}).IsUpdating]".format(
+        list_id=list_id,
+    )
+
+
+def _stored_wall_shown(row_id, section_list_ids):
+    """True while some wall in the section satisfies the stored property.
+
+    False means nothing has been entered yet, or what was entered has gone
+    empty, and the section falls back to the first tab's wall. The tab row
+    marks the open tab off the same condition, so the marker follows the
+    handoff instead of lagging on the tab that emptied.
+    """
+    prop = "Window(Home).Property(%s)" % _shown_wall_property(row_id)
+    return " | ".join(
+        "[String.IsEqual({prop},{sibling}) + {has_items}]".format(
+            prop=prop,
+            sibling=sibling,
+            has_items=_wall_has_items(sibling),
+        )
+        for sibling in section_list_ids
+    )
+
+
+def _wall_visible_condition(widget, list_id, row_id, section_list_ids):
     """Visibility of one wall for both tab loading modes.
 
     Auto shows the wall of the highlighted tab. Manual shows the wall last
     entered from the tab row, so highlighting a tab doesn't show (and
-    allocate) its wall. Until one has been entered it shows the wall of the
-    first tab still in the row, skipping tabs hidden for being empty.
+    allocate) its wall.
+
+    The stored wall can go empty later (its widget stopped returning items),
+    which hides its tab but leaves the property naming it. So a stored wall
+    only shows while it still has items, and the first tab's wall takes over
+    whenever no wall in the section satisfies the stored property: nothing
+    stored yet, or what was stored is gone. That needs every wall in the
+    section, since a wall can't otherwise tell an empty stored wall from one
+    that is simply not itself.
     """
     prop = "Window(Home).Property(%s)" % _shown_wall_property(row_id)
-    manual = "[String.IsEqual({prop},{list_id}) | [String.IsEmpty({prop}) + String.IsEqual(Container({row_id}).ListItemAbsolute(0).Property(wall_id),{list_id})]]".format(
+    stored = "[String.IsEqual({prop},{list_id}) + {has_items}]".format(
         prop=prop,
+        list_id=list_id,
+        has_items=_wall_has_items(list_id),
+    )
+    first = "[![{stored_shown}] + String.IsEqual(Container({row_id}).ListItemAbsolute(0).Property(wall_id),{list_id})]".format(
+        stored_shown=_stored_wall_shown(row_id, section_list_ids),
         list_id=list_id,
         row_id=row_id,
     )
+    manual = "[{stored} | {first}]".format(stored=stored, first=first)
     return "[!{setting} + Container({row_id}).HasFocus({item_id})] | [{setting} + {manual}]".format(
         setting=MANUAL_LOADING_SETTING,
         row_id=row_id,
@@ -157,7 +198,7 @@ def _wall_visible_condition(widget, list_id, row_id):
     )
 
 
-def _build_wall_xml(widget, list_id, row_id):
+def _build_wall_xml(widget, list_id, row_id, section_list_ids):
     """Generate the wall include call for one widget."""
     xml = """
         <include content="{include}">
@@ -169,7 +210,7 @@ def _build_wall_xml(widget, list_id, row_id):
         include=_wall_include(widget),
         list_id=list_id,
         row_id=row_id,
-        visible=_wall_visible_condition(widget, list_id, row_id),
+        visible=_wall_visible_condition(widget, list_id, row_id, section_list_ids),
         path=_escape_ampersand(widget["path"]),
         target=widget["target"],
     )
@@ -199,10 +240,13 @@ def _build_wall_section_xml(section_pos, widgets):
     walls_id = _compute_walls_id(section_pos)
     tabs = ""
     walls = ""
+    section_list_ids = [
+        _compute_list_id(section_pos, widget["position"]) for widget in widgets
+    ]
     for widget in widgets:
         list_id = _compute_list_id(section_pos, widget["position"])
         tabs += _build_tab_item_xml(widget, list_id)
-        walls += _build_wall_xml(widget, list_id, row_id)
+        walls += _build_wall_xml(widget, list_id, row_id, section_list_ids)
     return """
     <control type="group" id="{group_id}">
       <visible>String.IsEqual(Container(9000).ListItem.Property(menu_id),{group_id})</visible>
@@ -218,6 +262,7 @@ def _build_wall_section_xml(section_pos, widgets):
         <include content="HomeWallTabRow">
           <param name="row_id" value="{row_id}"/>
           <param name="walls_id" value="{walls_id}"/>
+          <param name="fallback" value="![{stored_shown}]"/>
         </include>
         <content>{tabs}
         </content>
@@ -232,6 +277,7 @@ def _build_wall_section_xml(section_pos, widgets):
         group_id=group_id,
         row_id=row_id,
         walls_id=walls_id,
+        stored_shown=_stored_wall_shown(row_id, section_list_ids),
         tabs=tabs,
         walls=walls,
     )
