@@ -3,7 +3,11 @@
 Migrates data from the old custom_paths table to the new sections/widgets schema.
 Runs once automatically on first launch after update.
 Also supports importing configs from other skins (Nimbus, FENtastic).
+Reshapes configs for home walls: stacked widgets become sections of their own,
+the skin's default Category widgets become section submenus, and display types walls don't
+have are remapped.
 """
+import json
 import sqlite3 as database
 import xbmc, xbmcvfs, xbmcgui
 
@@ -69,6 +73,54 @@ OLD_SECTION_MAP = {
 }
 
 OLD_SECTION_ORDER = ["movie", "tvshow", "custom1", "custom2", "custom3"]
+
+# Display types home walls don't have, mapped to the wall that replaces them.
+# Flix variants exist for horizontal rows (reflection, slide-under), which a
+# wall has no use for.
+WALL_TYPE_MAP = {
+    "WidgetListSmallPosterFlix": "WidgetListSmallPoster",
+    "WidgetListLandscapeFlix": "WidgetListLandscape",
+    "WidgetListSmallLandscapeFlix": "WidgetListSmallLandscape",
+    "WidgetListBigPoster": "WidgetListPoster",
+    "WidgetListFavourites": "WidgetListSquare",
+}
+
+# Category widgets the skin created by default (see default_config) become
+# submenus of their section: a wall of category tiles is just a list of places
+# to go. Category widgets someone made themselves are left as Category walls.
+
+# JSON-RPC's Files.GetDirectory refuses the add-ons root and pvr:// paths
+# (CFileUtils::RemoteAccessAllowed), so their entries are mirrored from Kodi
+# 21's own root lists (CAddonsDirectory RootDirectory, CPVRGUIDirectory
+# GetRootDirectory): same string ids, icons and target windows. Available
+# updates is kept even though Kodi only lists it while updates exist; the
+# transient downloading and recently updated entries are left out. Search needs
+# no special handling: an empty addons://search/ path opens the keyboard.
+_PVR_ROOT = [
+    (19069, "Guide", "DefaultPVRGuide.png"),
+    (19019, "Channels", "DefaultPVRChannels.png"),
+    (19017, "Recordings", "DefaultPVRRecordings.png"),
+    (19040, "Timers", "DefaultPVRTimers.png"),
+    (19138, "TimerRules", "DefaultPVRTimerRules.png"),
+    (137, "Search", "DefaultPVRSearch.png"),
+]
+CATEGORY_NODE_ENTRIES = {
+    "addons://": [
+        ("$LOCALIZE[24998]", "ActivateWindow(AddonBrowser,addons://user/,return)", "DefaultAddonsInstalled.png"),
+        ("$LOCALIZE[24043]", "ActivateWindow(AddonBrowser,addons://outdated/,return)", "DefaultAddonsUpdates.png"),
+        ("$LOCALIZE[24033]", "ActivateWindow(AddonBrowser,addons://repos/,return)", "DefaultAddonsRepo.png"),
+        ("$LOCALIZE[24041]", "InstallFromZip", "DefaultAddonsZip.png"),
+        ("$LOCALIZE[137]", "ActivateWindow(AddonBrowser,addons://search/,return)", "DefaultAddonsSearch.png"),
+    ],
+    "pvr://tv/": [
+        ("$LOCALIZE[%d]" % sid, "ActivateWindow(TV%s)" % window, icon)
+        for sid, window, icon in _PVR_ROOT
+    ],
+    "pvr://radio/": [
+        ("$LOCALIZE[%d]" % sid, "ActivateWindow(Radio%s)" % window, icon)
+        for sid, window, icon in _PVR_ROOT
+    ],
+}
 
 
 def _old_table_exists(db_path=None):
@@ -203,7 +255,226 @@ def _migrate_data(old_data, cm, migrate_skin_settings=False, type_map=None):
     return created
 
 
+def _wall_type(display_type):
+    """Map a display type (optionally Stacked-suffixed) to the one its wall uses."""
+    if display_type and display_type.endswith("Stacked"):
+        display_type = display_type[:-7]
+    return WALL_TYPE_MAP.get(display_type, display_type)
+
+
+def _list_directory(path):
+    """Items of a path via JSON-RPC, or None if the listing failed."""
+    command = {
+        "jsonrpc": "2.0",
+        "id": "script.altus.helper",
+        "method": "Files.GetDirectory",
+        "params": {
+            "directory": path,
+            "media": "files",
+            "properties": ["title", "file", "thumbnail", "art"],
+        },
+    }
+    try:
+        response = json.loads(xbmc.executeJSONRPC(json.dumps(command)))
+    except Exception:
+        return None
+    result = response.get("result")
+    if result is None:
+        return None
+    return result.get("files") or []
+
+
+def _list_subfolders(path):
+    """Subfolders of a stacked widget's path, or None if the listing failed.
+
+    Only directories count, matching what a stacked widget's child could load.
+    """
+    items = _list_directory(path)
+    if items is None:
+        return None
+    return [f for f in items if f.get("filetype") == "directory"]
+
+
+def _with_slash(path):
+    """Path with one trailing slash; rstrip would eat the "//" of "addons://"."""
+    return path if path.endswith("/") else path + "/"
+
+
+def is_listing_node(path):
+    """Whether a category path is a node whose items are themselves the
+    categories (library nodes, the add-ons root, PVR roots)."""
+    return path.startswith("library://") or _with_slash(path) in CATEGORY_NODE_ENTRIES
+
+
+def category_submenu_entries(label, path, target):
+    """(label, onclick, icon) submenu entries for a category.
+
+    A listing node (library node, add-ons root, PVR root) gives one entry per
+    item. Anything else - genres, studios, playlists, sources - is itself one
+    category, so it gives a single entry that opens the path. Shared by the
+    migration, the default config and the widget manager's "add as submenu
+    entries" choice. Returns None when a node can't be listed right now.
+    """
+    from modules.widget_manager.path_browser import build_onclick, default_icon, item_icon
+
+    if not is_listing_node(path):
+        return [(label, build_onclick(path, target), default_icon(path) or "DefaultFolder.png")]
+    fixed = CATEGORY_NODE_ENTRIES.get(_with_slash(path))
+    if fixed is not None:
+        return list(fixed)
+    items = _list_directory(path)
+    if items is None:
+        return None
+    return [
+        (i["label"], build_onclick(i["file"], target), item_icon(i) or "DefaultFolder.png")
+        for i in items
+    ]
+
+
+def _default_category_widgets():
+    """(label, path) of every Category widget in the default config."""
+    from modules.widget_manager.default_config import DEFAULT_SECTIONS
+
+    return {
+        (label, path)
+        for section in DEFAULT_SECTIONS
+        for label, path, display_type, _target, _sortby, _sortorder in section["widgets"]
+        if display_type == "WidgetListCategory"
+    }
+
+
+def _expand_stacked_widgets(cm):
+    """Turn every stacked widget into a section with one tab per subfolder.
+
+    New sections go directly after their parent section, in widget order, and
+    inherit its icon. A widget whose folder can't be listed right now (addon
+    missing or disabled, network not up yet at startup) is left untouched so
+    the next run retries it; converting it to a fallback would be permanent.
+    A folder that lists fine but has no subfolders becomes a plain widget of
+    that folder instead.
+    """
+    from modules.widget_manager.path_browser import build_onclick
+
+    for section in cm.get_sections():
+        stacked = [w for w in cm.get_widgets(section["id"]) if w["is_stacked"]]
+        inserted = 0
+        for widget in stacked:
+            folders = _list_subfolders(widget["path"])
+            if folders is None:
+                continue
+            tab_type = _wall_type(widget["stacked_type"] or "WidgetListPoster")
+            if not folders:
+                cm.update_widget(
+                    widget["id"], is_stacked=0, stacked_type="", display_type=tab_type
+                )
+                continue
+            hidden = section["visible"] == "false" or widget["visible"] == "false"
+            new_id = cm.add_section(
+                widget["label"],
+                onclick=build_onclick(widget["path"], widget["target"]),
+                icon=section["icon"],
+                visible="false" if hidden else "",
+            )
+            inserted += 1
+            parent_position = cm.get_section(section["id"])["position"]
+            cm.reorder_section(new_id, parent_position + inserted)
+            for folder in folders:
+                cm.add_widget(
+                    section_id=new_id,
+                    path=folder["file"],
+                    label=folder["label"],
+                    display_type=tab_type,
+                    target=widget["target"],
+                )
+            cm.remove_widget(widget["id"])
+
+
+def _convert_category_widgets(cm):
+    """Move the skin's default Category widgets into their section's submenu.
+
+    A Category widget counts as default when its label and path both match an
+    entry in default_config, whatever section it sits in; one that was renamed,
+    repointed, imported from another skin or made in the manager stays a
+    Category wall. Each entry becomes a submenu after the existing ones: label,
+    onclick and icon. A hidden widget gives hidden entries. As with stacked
+    widgets, a path that can't be listed right now is left for the next run.
+
+    The default Genres, Studios, Sources and Playlists widgets sit next to a
+    Categories node that already lists them, so in a section that has such a
+    node they are removed without adding anything. Pictures' Sources has no
+    node beside it and still becomes an entry.
+    """
+    defaults = _default_category_widgets()
+    for section in cm.get_sections():
+        categories = [
+            w for w in cm.get_widgets(section["id"])
+            if not w["is_stacked"]
+            and w["display_type"] == "WidgetListCategory"
+            and (w["label"], w["path"]) in defaults
+        ]
+        has_node = any(is_listing_node(w["path"]) for w in categories)
+        for widget in categories:
+            if has_node and not is_listing_node(widget["path"]):
+                cm.remove_widget(widget["id"])
+                continue
+            entries = category_submenu_entries(
+                widget["label"], widget["path"], widget["target"]
+            )
+            if entries is None:
+                continue
+            visible = "false" if widget["visible"] == "false" else ""
+            for label, onclick, icon in entries:
+                cm.add_submenu(
+                    section["id"], label, onclick=onclick, icon=icon, visible=visible
+                )
+            cm.remove_widget(widget["id"])
+
+
+def _remap_wall_types(cm):
+    """Rewrite display types walls don't have, in both type columns."""
+    for old, new in WALL_TYPE_MAP.items():
+        cm.dbcur.execute(
+            "UPDATE widgets SET display_type = ? WHERE display_type = ?", (new, old)
+        )
+        cm.dbcur.execute(
+            "UPDATE widgets SET stacked_type = ? WHERE stacked_type = ?", (new, old)
+        )
+    cm.dbcon.commit()
+
+
+def migrate_to_walls(cm=None):
+    """Reshape the active widget config for home walls.
+
+    Safe to run any number of times: with no stacked widgets, default Category
+    widgets or wall-less display types left, it changes nothing. Pass an open
+    ConfigManager to reuse it; otherwise one is opened and closed here.
+    """
+    own = cm is None
+    if own:
+        cm = ConfigManager()
+    try:
+        _expand_stacked_widgets(cm)
+        _convert_category_widgets(cm)
+        _remap_wall_types(cm)
+    finally:
+        if own:
+            cm.close()
+
+
 def migrate():
+    """Bring the widget config up to date. Returns True if custom_paths data was migrated.
+
+    Runs the one-time custom_paths import, then reshapes whatever config is
+    active for walls. The walls step repeats safely, so every caller of
+    migrate() gets it, including configs that finished the old migration
+    long ago.
+    """
+    result = _migrate_custom_paths()
+    migrate_to_walls()
+    return result
+
+
+def _migrate_custom_paths():
     """Migrate old custom_paths data to the new schema. Returns True if migration ran."""
     if not _old_table_exists():
         return False
@@ -274,6 +545,8 @@ def import_from_skin():
     for section in cm.get_sections():
         cm.remove_section(section["id"])
     result = _migrate_data(old_data, cm, type_map=chosen_type_map)
+    if result:
+        migrate_to_walls(cm)
     cm.close()
     if result:
         # Other skins carry no search config, so an import would otherwise fall

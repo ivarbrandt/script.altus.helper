@@ -15,12 +15,9 @@ from modules.widget_manager.config_manager import (
     rename_config,
     delete_config,
 )
-from modules.widget_manager.xml_generator import (
-    generate_and_reload,
-    _init_stacked_widgets,
-)
+from modules.widget_manager.xml_generator import generate_and_reload
 from modules.widget_manager.default_config import create_default_sections
-from modules.widget_manager.migration import migrate, import_from_skin
+from modules.widget_manager.migration import migrate, migrate_to_walls, import_from_skin
 from modules.search_manager.default_config import (
     apply_profile as apply_search_profile,
     seed_profile_config as seed_search_profile,
@@ -220,6 +217,15 @@ def routing():
         # outgoing profile's config.
         seed_search_profile(chosen)
         if load_config(chosen):
+            # A profile saved before walls is still in the old shape; convert
+            # it now that it's active. The rebuild below auto-saves the result
+            # back to the profile, so this only does real work once per profile.
+            # Listing stacked folders can take a few seconds, hence the dialog.
+            xbmc.executebuiltin("ActivateWindow(busydialognocancel)")
+            try:
+                migrate_to_walls()
+            finally:
+                xbmc.executebuiltin("Dialog.Close(busydialognocancel)")
             xbmc.executebuiltin(
                 "Skin.SetString(altus_active_widget_config,%s)" % chosen
             )
@@ -365,12 +371,6 @@ def routing():
         from modules.widget_manager.manager_window import open_manager
 
         return open_manager()
-
-    if mode == "starting_widgets":
-        cm = ConfigManager()
-        config = cm.get_full_config()
-        cm.close()
-        return _init_stacked_widgets(config)
 
     if mode == "search_input":
         from modules.search_utils import SPaths

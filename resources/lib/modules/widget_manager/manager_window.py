@@ -15,11 +15,8 @@ DISPLAY_TYPE_MAP = {
     "WidgetListBigPoster": "Big Poster",
     "WidgetListPoster": "Poster",
     "WidgetListSmallPoster": "Small Poster",
-    "WidgetListSmallPosterFlix": "Small Poster - Flix",
     "WidgetListLandscape": "Landscape",
-    "WidgetListLandscapeFlix": "Landscape - Flix",
     "WidgetListSmallLandscape": "Small Landscape",
-    "WidgetListSmallLandscapeFlix": "Small Landscape - Flix",
     "WidgetListCategory": "Category",
     "WidgetListCategoryStacked": "Category (Stacked)",
     "WidgetListSquare": "Square",
@@ -27,28 +24,14 @@ DISPLAY_TYPE_MAP = {
     "WidgetListPVR": "PVR",
 }
 
-# Selectable display types (tuples of friendly, internal)
+# Selectable display types (tuples of friendly, internal). Only types that have
+# a home wall (see WALL_INCLUDES in xml_generator).
 WIDGET_DISPLAY_TYPES = [
-    ("Big Poster", "WidgetListBigPoster"),
     ("Poster", "WidgetListPoster"),
     ("Small Poster", "WidgetListSmallPoster"),
-    ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
     ("Landscape", "WidgetListLandscape"),
-    ("Landscape - Flix", "WidgetListLandscapeFlix"),
     ("Small Landscape", "WidgetListSmallLandscape"),
-    ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
     ("Category", "WidgetListCategory"),
-]
-
-STACKED_DISPLAY_TYPES = [
-    ("Big Poster", "WidgetListBigPoster"),
-    ("Poster", "WidgetListPoster"),
-    ("Small Poster", "WidgetListSmallPoster"),
-    ("Small Poster - Flix", "WidgetListSmallPosterFlix"),
-    ("Landscape", "WidgetListLandscape"),
-    ("Landscape - Flix", "WidgetListLandscapeFlix"),
-    ("Small Landscape", "WidgetListSmallLandscape"),
-    ("Small Landscape - Flix", "WidgetListSmallLandscapeFlix"),
 ]
 
 PVR_DISPLAY_TYPES = [
@@ -67,7 +50,6 @@ ADDON_DISPLAY_TYPES = [
 ]
 
 FAVOURITES_DISPLAY_TYPES = [
-    ("SquareWall", "WidgetListFavourites"),
     ("Square", "WidgetListSquare"),
 ]
 
@@ -165,9 +147,7 @@ DETAIL_GROUPLIST = 5001
 DETAIL_LABEL = 5100
 DETAIL_DISPLAY_TYPE = 5101
 DETAIL_PATH = 5102
-DETAIL_STACKED = 5103
 DETAIL_TARGET = 5104
-DETAIL_STACKED_TYPE = 5105
 DETAIL_LIMIT = 5106
 DETAIL_SORTBY = 5107
 DETAIL_SORTORDER = 5108
@@ -179,7 +159,6 @@ DETAIL_CONTROLS = frozenset(
         DETAIL_LABEL,
         DETAIL_DISPLAY_TYPE,
         DETAIL_PATH,
-        DETAIL_STACKED,
         DETAIL_TARGET,
         DETAIL_LIMIT,
         DETAIL_SORTBY,
@@ -550,15 +529,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
 
     def _make_widget_item(self, widget):
         """Create a ListItem from a widget dict."""
-        is_stacked = widget["is_stacked"]
-        stacked_type = widget.get("stacked_type", "")
         hidden = widget.get("visible") == "false"
-        if is_stacked:
-            friendly_type = _friendly(stacked_type)
-            line2 = "%s | Stacked" % friendly_type if friendly_type else "Stacked"
-        else:
-            friendly_type = _friendly(widget["display_type"])
-            line2 = friendly_type
+        line2 = _friendly(widget["display_type"])
         resolved = _resolve_localize(widget["label"])
         label = _dim_label(resolved) if hidden else resolved
         line2 = _dim_label(line2) if hidden else line2
@@ -568,30 +540,18 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
 
     def _set_widget_item_props(self, li, widget):
         """Set all properties on a widget ListItem."""
-        is_stacked = widget["is_stacked"]
-        stacked_type = widget.get("stacked_type", "")
         hidden = widget.get("visible") == "false"
-        if is_stacked:
-            friendly_type = _friendly(stacked_type)
-            line2 = "%s | Stacked" % friendly_type if friendly_type else "Stacked"
-        else:
-            friendly_type = _friendly(widget["display_type"])
-            line2 = friendly_type
+        friendly_type = _friendly(widget["display_type"])
         resolved = _resolve_localize(widget["label"])
         label = _dim_label(resolved) if hidden else resolved
-        line2 = _dim_label(line2) if hidden else line2
+        line2 = _dim_label(friendly_type) if hidden else friendly_type
         li.setLabel(label)
         li.setLabel2(line2)
         li.setProperty("widget_id", str(widget["id"]))
         li.setProperty("widget_label", resolved)
-        if is_stacked:
-            li.setProperty("display_type", _friendly(stacked_type))
-        else:
-            li.setProperty("display_type", _friendly(widget["display_type"]))
+        li.setProperty("display_type", friendly_type)
         li.setProperty("widget_path", widget["path"])
         li.setProperty("target", widget["target"])
-        li.setProperty("is_stacked", "Yes" if is_stacked else "No")
-        li.setProperty("stacked_type", _friendly(stacked_type))
         li.setProperty("limit_num", str(widget.get("limit_num", 0)))
         li.setProperty("sortby", widget.get("sortby", ""))
         li.setProperty("sortorder", widget.get("sortorder", ""))
@@ -698,7 +658,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self.edit_menu_item_id = item_id or self._get_selected_submenu_id()
             submenus = self.config[self.submenu_section_id]["submenus"]
             sub = next((s for s in submenus if s["id"] == self.edit_menu_item_id), {})
-            header_label = sub.get("label", "")
+            header_label = _resolve_localize(sub.get("label", ""))
             header_icon = sub.get("icon", "")
         # Build items: header + indented options
         items = [
@@ -781,7 +741,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         new_ids = []
         for sub in submenus:
             hidden = sub.get("visible") == "false"
-            label = _dim_label(sub["label"]) if hidden else sub["label"]
+            name = _resolve_localize(sub["label"])
+            label = _dim_label(name) if hidden else name
             props = {
                 "submenu_id": str(sub["id"]),
                 "hidden": "true" if hidden else "",
@@ -848,7 +809,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         else:
             submenus = self.config.get(self.submenu_section_id, {}).get("submenus", [])
             sub = next((s for s in submenus if s["id"] == item_id), {})
-            header_label = sub.get("label", "")
+            header_label = _resolve_localize(sub.get("label", ""))
             header_icon = sub.get("icon", "")
         header = self.getControl(SECTION_LIST).getListItem(0)
         header.setLabel("[B]%s[/B]" % header_label)
@@ -1119,7 +1080,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         submenus = self.config.get(self.submenu_section_id, {}).get("submenus", [])
         for sub in submenus:
             hidden = sub.get("visible") == "false"
-            label = _dim_label(sub["label"]) if hidden else sub["label"]
+            name = _resolve_localize(sub["label"])
+            label = _dim_label(name) if hidden else name
             li = xbmcgui.ListItem(label)
             li.setProperty("submenu_id", str(sub["id"]))
             li.setProperty("hidden", "true" if hidden else "")
@@ -1269,8 +1231,9 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         sub = next((s for s in submenus if s["id"] == sub_id), None)
         if not sub:
             return
-        new_name = self._input("Rename Submenu", sub["label"])
-        if not new_name or new_name == sub["label"]:
+        current_name = _resolve_localize(sub["label"])
+        new_name = self._input("Rename Submenu", current_name)
+        if not new_name or new_name == current_name:
             return
         self.cm.update_submenu(sub_id, label=new_name)
         self.changed = True
@@ -1327,7 +1290,7 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         self.changed = True
         idx = self.submenu_ids.index(sub_id)
         li = self.getControl(SECTION_LIST).getListItem(idx)
-        name = sub["label"]
+        name = _resolve_localize(sub["label"])
         li.setLabel(_dim_label(name) if new_visible == "false" else name)
         li.setProperty("hidden", "true" if new_visible == "false" else "")
         self._load_config()
@@ -1383,10 +1346,17 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         path = result["path"]
         target = result.get("target", "videos")
         default_label = result.get("label", "")
+        internal_type = result.get("display_type")
+        if internal_type == "WidgetListCategory":
+            mode = self._ask_category_mode()
+            if mode is None:
+                return
+            if mode == "submenu":
+                self._add_category_submenus([(default_label, path, target)])
+                return
         label = self._input("Widget Label", default_label)
         if not label:
             return
-        internal_type = result.get("display_type")
         if internal_type is None:
             # Auto-assign didn't resolve — prompt with filtered types
             types = _get_display_types_for_widget({"path": path, "target": target})
@@ -1413,7 +1383,6 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             label=label,
             display_type=internal_type,
             target=target,
-            stacked_type=internal_type,
         )
         if pos_after is not None:
             self.cm.reorder_widget(widget_id, pos_after + 1)
@@ -1426,8 +1395,6 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         li.setProperty("display_type", friendly_type)
         li.setProperty("widget_path", path)
         li.setProperty("target", target)
-        li.setProperty("is_stacked", "No")
-        li.setProperty("stacked_type", "")
         li.setProperty("limit_num", "0")
         li.setProperty("sortby", "")
         li.setProperty("sortorder", "")
@@ -1449,6 +1416,20 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         """
         if not picks:
             return
+        category_picks = [
+            p for p in picks if p.get("display_type") == "WidgetListCategory"
+        ]
+        if category_picks:
+            mode = self._ask_category_mode()
+            if mode is None:
+                return
+            if mode == "submenu":
+                self._add_category_submenus(
+                    [(p["label"], p["path"], p.get("target", "videos")) for p in category_picks]
+                )
+                picks = [p for p in picks if p not in category_picks]
+                if not picks:
+                    return
         # Batched display_type prompt for unresolved items
         unresolved = [p for p in picks if not p.get("display_type")]
         if unresolved:
@@ -1488,7 +1469,6 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
                 label=label,
                 display_type=internal_type,
                 target=target,
-                stacked_type=internal_type,
             )
             if pos_after is not None:
                 self.cm.reorder_widget(widget_id, pos_after + 1 + offset)
@@ -1499,8 +1479,6 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             li.setProperty("display_type", friendly_type)
             li.setProperty("widget_path", path)
             li.setProperty("target", target)
-            li.setProperty("is_stacked", "No")
-            li.setProperty("stacked_type", "")
             li.setProperty("limit_num", "0")
             li.setProperty("sortby", "")
             li.setProperty("sortorder", "")
@@ -1513,6 +1491,41 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         widget_list.selectItem(insert_idx + len(picks) - 1)
         self._load_config()
         self.setFocusId(WIDGET_LIST)
+
+    def _ask_category_mode(self):
+        """Ask how to add a category path: its items as submenu entries of the
+        section, or a Category wall. Returns "submenu", "wall" or None."""
+        idx = self._select(
+            "Add Categories", ["Add as submenu entries", "Add as Category wall"]
+        )
+        if idx is None or idx < 0:
+            return None
+        return "submenu" if idx == 0 else "wall"
+
+    def _add_category_submenus(self, picks):
+        """Append each (label, path, target) pick's items to the current
+        section's submenu, the same entries the walls migration builds."""
+        from modules.widget_manager.migration import category_submenu_entries
+
+        added = 0
+        failed = []
+        for label, path, target in picks:
+            entries = category_submenu_entries(label, path, target)
+            if entries is None:
+                failed.append(_resolve_localize(label))
+                continue
+            for entry_label, onclick, icon in entries:
+                self.cm.add_submenu(
+                    self.current_section_id, entry_label, onclick=onclick, icon=icon
+                )
+                added += 1
+        if added:
+            self.changed = True
+            self._load_config()
+        message = "Added %d submenu entries" % added
+        if failed:
+            message += " - couldn't list %s" % ", ".join(failed)
+        xbmcgui.Dialog().notification("Widget Manager", message)
 
     def _delete_widget(self):
         wid = self._get_selected_widget_id()
@@ -1545,66 +1558,17 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             return
         widget = dict(row)
         if field == "display_type":
-            if widget["is_stacked"]:
-                # Stacked widget: display_type is locked to CategoryStacked,
-                # so change the child type (stacked_type) instead
-                types = STACKED_DISPLAY_TYPES
-                names = [t[0] for t in types]
-                idx = self._select("Display Type", names)
-                if idx is None or idx < 0:
-                    return
-                new_val = types[idx][1]
-                self.cm.update_widget(wid, stacked_type=new_val)
-                self.changed = True
-                self._update_widget_item_in_place(wid)
-                return
             types = _get_display_types_for_widget(widget)
             names = [t[0] for t in types]
             idx = self._select("Display Type", names)
             if idx is None or idx < 0:
                 return
             new_val = types[idx][1]
-            # Sync stacked_type so it's ready if user toggles stacked on later
-            self.cm.update_widget(wid, stacked_type=new_val)
         elif field == "target":
             idx = self._select("Target", TARGET_TYPES)
             if idx is None or idx < 0:
                 return
             new_val = TARGET_TYPES[idx]
-        elif field == "is_stacked":
-            current = widget["is_stacked"]
-            new_val = 0 if current else 1
-            if new_val:
-                # Turning ON stacked
-                stacked_type = widget["stacked_type"]
-                if not stacked_type:
-                    names = [t[0] for t in STACKED_DISPLAY_TYPES]
-                    idx = self._select("Stacked Child Display Type", names)
-                    if idx is None or idx < 0:
-                        return
-                    stacked_type = STACKED_DISPLAY_TYPES[idx][1]
-                self.cm.update_widget(
-                    wid,
-                    is_stacked=1,
-                    stacked_type=stacked_type,
-                    display_type="WidgetListCategoryStacked",
-                )
-            else:
-                # Turning OFF stacked — revert display_type to child type
-                self.cm.update_widget(
-                    wid,
-                    is_stacked=0,
-                    display_type=widget["stacked_type"] or widget["display_type"],
-                )
-            self.changed = True
-            self._update_widget_item_in_place(wid)
-            return
-        elif field == "stacked_type":
-            names = [t[0] for t in STACKED_DISPLAY_TYPES]
-            idx = self._select("Stacked Child Display Type", names)
-            if idx is None or idx < 0:
-                return
-            new_val = STACKED_DISPLAY_TYPES[idx][1]
         elif field == "limit_num":
             current = widget.get("limit_num", 0)
             new_val = xbmcgui.Dialog().numeric(0, "Limit (0 = no limit)", str(current))
@@ -1675,7 +1639,6 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
         "widget_label",
         "display_type",
         "widget_path",
-        "is_stacked",
         "target",
         "limit_num",
         "sortby",
@@ -1751,7 +1714,8 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             for i, s in enumerate(submenus):
                 hidden = s.get("visible") == "false"
                 li = section_list.getListItem(i)
-                li.setLabel(_dim_label(s["label"]) if hidden else s["label"])
+                name = _resolve_localize(s["label"])
+                li.setLabel(_dim_label(name) if hidden else name)
                 li.setProperty("submenu_id", str(s["id"]))
                 li.setProperty("hidden", "true" if hidden else "")
                 li.setProperty("icon", s.get("icon", ""))
@@ -1931,8 +1895,6 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             self._edit_widget_field("display_type", control_id)
         elif control_id == DETAIL_PATH:
             self._edit_widget_field("path", control_id)
-        elif control_id == DETAIL_STACKED:
-            self._edit_widget_field("is_stacked", control_id)
         elif control_id == DETAIL_TARGET:
             self._edit_widget_field("target", control_id)
         elif control_id == DETAIL_LIMIT:
@@ -2091,8 +2053,6 @@ class WidgetManagerWindow(xbmcgui.WindowXMLDialog):
             "display_type",
             "widget_path",
             "target",
-            "is_stacked",
-            "stacked_type",
             "limit_num",
             "sortby",
             "sortorder",

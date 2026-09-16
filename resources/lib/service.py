@@ -57,7 +57,6 @@ class Service(xbmc.Monitor):
         """Start the service and monitor."""
         self.image_monitor.start()
         self.live_search_monitor.start()
-        self._was_on_home = False
         while not self.abortRequested():
             on_home = (
                 self.get_visibility("Window.IsVisible(home)")
@@ -68,9 +67,6 @@ class Service(xbmc.Monitor):
                 if now - self._last_version_check >= VERSION_CHECK_INTERVAL:
                     self._last_version_check = now
                     self._check_version_and_profile()
-                self._check_stacked_widgets(on_home)
-            else:
-                self._was_on_home = False
             self._check_search_history_refresh()
             if self._should_pause():
                 self.waitForAbort(2)
@@ -92,27 +88,6 @@ class Service(xbmc.Monitor):
         saved_profile = self.home_window.getProperty("skin.altus.current_profile")
         if current_profile != saved_profile:
             check_for_profile_change("skin.altus")
-
-    def _check_stacked_widgets(self, on_home):
-        """Init stacked widgets when home window loads (replaces onload RunScript)."""
-        starting = self.home_window.getProperty("altus.starting_widgets")
-        if self._was_on_home and starting:
-            # Already initialised and still on home: needs_init below is False
-            # whatever the setting says, so don't evaluate it every tick.
-            return
-        disable_reset = self.get_visibility("Skin.HasSetting(Disable.ResetStacked)")
-        # Run when: property is empty (first load or after _reload_skin cleared it)
-        # OR when returning to home and reset isn't disabled
-        needs_init = not starting or (not self._was_on_home and not disable_reset)
-        if needs_init:
-            from modules.widget_manager.config_manager import ConfigManager
-            from modules.widget_manager.xml_generator import _init_stacked_widgets
-
-            cm = ConfigManager()
-            config = cm.get_full_config()
-            cm.close()
-            _init_stacked_widgets(config)
-        self._was_on_home = True
 
     def _load_view_preferences(self):
         """Load view preferences from JSON, using mtime-based cache."""

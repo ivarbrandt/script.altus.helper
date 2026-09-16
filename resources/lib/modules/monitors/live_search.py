@@ -35,6 +35,10 @@ STAGGER_MS = 300
 # addon or a hung network call can leave a container updating indefinitely;
 # without this, search would wedge permanently rather than degrade.
 MAX_DEFER_MS = 15000
+# How long priming a stacked widget's first child waits for its parent to load.
+# Slow plugins can take a while; focusing the parent still loads the child the
+# usual way if this gives up.
+STACKED_PRIME_TIMEOUT_MS = 15000
 
 # QWERTY key control IDs in Custom_1121_SearchResults.xml — focus changes
 # within this range are treated as "still navigating between keys" and
@@ -97,7 +101,11 @@ def write_resolved_widget_paths(encoded_term):
     both the keystroke-debounced refresh path (LiveSearchMonitor) and the
     keyboard-confirmed search path (search_utils.search_input) — the latter
     needs to bypass the debounce so widgets are loadable when re_search's
-    SetFocus(2000) lands."""
+    SetFocus(2000) lands.
+
+    Returns the search generation the paths were written under, or None if a
+    clear abandoned the write. Pass it to prime_stacked_children() so the
+    stacked children are primed only while that search is still current."""
     from modules.search_manager.xml_generator import (
         iter_visible_widgets_with_ids,
     )
@@ -121,15 +129,75 @@ def write_resolved_widget_paths(encoded_term):
         # otherwise the widgets this loop hasn't reached yet get their real
         # path written back over the clear and stay populated.
         if home.getProperty(GENERATION_PROPERTY) != generation:
-            return
+            return None
         home.setProperty("altus.search.widget.%s.path" % list_id, resolved)
+    return generation
+
+
+def prime_stacked_children(generation):
+    """Load the first child of each stacked search widget.
+
+    Called once a search has published its parent paths: from the live
+    monitor for typed searches, and from SPaths.search_input / re_search for
+    confirmed and history searches (after their focus moves, since this
+    waits on the parents). The parent container is already fetching the same
+    listing, so the child's first item is read from it once it has loaded,
+    rather than running the plugin a second time over JSON-RPC. Nothing here
+    touches focus. InfoLabels are safe to read off the main thread.
+
+    Stops writing once a clear has bumped the search generation, or when the
+    search window closes, so a slow parent can't repopulate a cleared search.
+    Focusing the parent still loads the child the usual way if this times out.
+    """
+    if generation is None:
+        return
+    from modules.search_manager.xml_generator import iter_visible_widgets_with_ids
+
+    home = xbmcgui.Window(10000)
+    pending = [
+        list_id
+        for list_id, w in iter_visible_widgets_with_ids()
+        if w.get("is_stacked")
+    ]
+    monitor = xbmc.Monitor()
+    waited = 0
+    while pending and waited < STACKED_PRIME_TIMEOUT_MS:
+        if home.getProperty(GENERATION_PROPERTY) != generation or not xbmc.getCondVisibility(
+            "Window.IsVisible(1121)"
+        ):
+            return
+        for list_id in list(pending):
+            # Right after the path is written the container may not have
+            # started updating yet, so wait for items, not just for
+            # IsUpdating to be false.
+            if xbmc.getCondVisibility(
+                "Container(%s).IsUpdating | !Integer.IsGreater(Container(%s).NumItems,0)"
+                % (list_id, list_id)
+            ):
+                continue
+            pending.remove(list_id)
+            path = xbmc.getInfoLabel(
+                "Container(%s).ListItemAbsolute(0).FolderPath" % list_id
+            )
+            if not path or not xbmc.getCondVisibility(
+                "Container(%s).ListItemAbsolute(0).IsFolder" % list_id
+            ):
+                continue
+            label = xbmc.getInfoLabel(
+                "Container(%s).ListItemAbsolute(0).Label" % list_id
+            )
+            home.setProperty("altus.search.child.%s.label" % list_id, label)
+            home.setProperty("altus.search.child.%s.path" % list_id, path)
+        if monitor.waitForAbort(0.1):
+            return
+        waited += 100
 
 
 class LiveSearchMonitor(threading.Thread):
     """Debounces live-search widget refreshes.
 
     Watches Window(home).Property(altus.search.input). When the value stays
-    unchanged for DEBOUNCE_MS, fires starting_search_widgets() once in a
+    unchanged for DEBOUNCE_MS, fires a refresh (_do_refresh) once in a
     sub-thread so the poll loop keeps draining keystrokes.
 
     Also owns the per-widget content_path properties:
@@ -264,7 +332,7 @@ class LiveSearchMonitor(threading.Thread):
             self.home_window.setProperty(self._path_property(list_id), value)
 
     def _write_resolved_paths(self, encoded):
-        write_resolved_widget_paths(encoded)
+        return write_resolved_widget_paths(encoded)
 
     def _focus_id(self):
         # Use the InfoLabel rather than xbmcgui.Window(...).getFocusId() —
@@ -463,22 +531,23 @@ class LiveSearchMonitor(threading.Thread):
     def _do_refresh(self, search_term):
         """Publish the encoded properties and the per-widget resolved URLs.
         Containers bound to ``altus.search.widget.<id>.path`` via $INFO
-        refetch automatically when the property changes. Then kick the
-        legacy stacked-Trakt widgets and clear the in-progress flag.
+        refetch automatically when the property changes. Then prime the
+        stacked widgets' first children and clear the in-progress flag.
 
         The COOLDOWN_MS sleep is load-bearing: it holds _refreshing so the next
         refresh cannot start until the containers have had time to settle. An
         earlier attempt to abandon superseded refreshes released it early, which
         removed that spacing during typing and left widgets half-loaded."""
-        from modules.cpath_maker import starting_search_widgets
-
         try:
             encoded = quote(search_term)
             self.home_window.setProperty("altus.search.refreshing", "true")
             self.home_window.setProperty("altus.search.input.encoded", encoded)
             self.home_window.setProperty("altus.search.input.trakt.encoded", encoded)
-            self._write_resolved_paths(encoded)
-            starting_search_widgets()
+            generation = self._write_resolved_paths(encoded)
+            # Waits for the stacked parents to load, then points each child at
+            # its parent's first item; the child's own fetch is then covered by
+            # the loading wait below, since its id is in _widget_focus_ids.
+            prime_stacked_children(generation)
             # Hold _refreshing for the round's real duration, not a guess.
             # Measured: containers report IsUpdating within ~250ms of the paths
             # landing and finish around 3s — but COOLDOWN_MS used to release the

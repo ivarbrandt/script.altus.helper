@@ -3,7 +3,6 @@
 import time
 import xbmc, xbmcgui, xbmcvfs
 import sqlite3 as database
-from modules import xmls
 from urllib.parse import quote
 
 # from modules.logger import logger
@@ -52,12 +51,6 @@ def _get_history_db_path(profile=None):
         except Exception:
             profile = ""
     return profile_history_path(profile)
-
-search_history_xml = "script-altus-search_history"
-
-default_xmls = {
-    "search_history": (search_history_xml, xmls.default_history, "SearchHistory")
-}
 
 default_path = "addons://sources/video"
 
@@ -349,16 +342,23 @@ class SPaths:
         # has loadable widget containers to land on.
         from modules.monitors.live_search import (
             COMMITTED_TERM_PROPERTY,
+            prime_stacked_children,
             write_resolved_widget_paths,
         )
 
-        write_resolved_widget_paths(encoded_search_term)
+        generation = write_resolved_widget_paths(encoded_search_term)
         # Stamp the cross-process commit sentinel so LiveSearchMonitor's
         # P8e widget-focus path doesn't double-bump search_count for this
         # term. Cleared by the monitor when input goes empty.
         self.home_window.setProperty(COMMITTED_TERM_PROPERTY, search_term.casefold())
-        if not from_history:
-            xbmc.executebuiltin("SetFocus(2000)")
+        if from_history:
+            # re_search moves focus itself once this returns, then primes.
+            return generation
+        xbmc.executebuiltin("SetFocus(2000)")
+        # The live monitor only refreshes while the edit control is visible, so
+        # a confirmed or history search primes its own stacked children, after
+        # the focus move since priming waits for the parents to load.
+        prime_stacked_children(generation)
 
     def commit_live_search_history(self):
         """Commit the current live-search input to history (P8e).
@@ -385,11 +385,14 @@ class SPaths:
         # widgets when the user navigates back. Cleared by 801/802 onfocus
         # and by the search window's onload.
         self.home_window.setProperty("altus.search.from", "history")
-        self.search_input(search_term, True)
+        generation = self.search_input(search_term, True)
         xbmc.sleep(100)
         xbmc.executebuiltin("SetFocus(9000,0,absolute)")
         xbmc.sleep(300)
         xbmc.executebuiltin("SetFocus(2000)")
+        from modules.monitors.live_search import prime_stacked_children
+
+        prime_stacked_children(generation)
 
     def toggle_search_filter(self, kind):
         """Toggle a kind in the live-mode filter pill panel (P8c).
