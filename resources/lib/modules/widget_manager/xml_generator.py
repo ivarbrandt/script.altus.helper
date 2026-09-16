@@ -462,6 +462,11 @@ def generate_submenus_xml(config):
         <content>{items_xml}
         </content>
       </control>
+      <include content="MenuScrollIndicators">
+        <param name="list_id" value="{submenu_list_id}"/>
+        <param name="top" value="16"/>
+        <param name="bottom" value="720"/>
+      </include>
     </control>""".format(
             group_id=group_id,
             submenu_list_id=submenu_list_id,
