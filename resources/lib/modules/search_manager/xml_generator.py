@@ -93,10 +93,9 @@ def iter_visible_widgets_with_ids(profile=None):
 
 FILTER_GENERATED_PATH = "special://skin/xml/script-altus-search_kind_filter.xml"
 FILTER_INCLUDE_NAME = "SearchKindFilter"
-# Pill IDs: 9701 = "All", 9702..N = one per distinct kind in widget-position
-# order. Stays well clear of keyboard range (9201..9605) and the filter-panel
-# grouplist itself (9700) in Custom_1121_SearchResults.xml.
-FILTER_BASE_BUTTON_ID = 9701
+# Static item ids inside the filter panel (9700): 1 = "All", 2..N = one per
+# distinct kind in widget-position order.
+FILTER_BASE_ITEM_ID = 1
 
 
 def _escape(value):
@@ -220,17 +219,19 @@ def _build_xml(profile=None):
     return "".join(parts)
 
 
-def _filter_button_block(label, button_id, onclick_action, selected_condition):
-    """Render one filter pill via the SearchKindFilterButton skin include.
-    Styling lives in the static include; this generator just wires per-pill
-    onclick + selected expressions."""
+def _filter_item_block(label, item_id, onclick_action, token):
+    """Render one filter pill as a static item for the SearchKindFilterPanel
+    panel (Includes_Search.xml). Styling and the selected state live in the
+    skin; the item only carries its label, onclick and ``token``. The skin's
+    SearchKindSelected expression compares ``token`` against the filter
+    property (``all`` for the All pill, ``@Kind@`` for a kind pill), so the
+    generator never has to write per-pill conditions."""
     return (
-        f'    <include content="SearchKindFilterButton">\n'
-        f'      <param name="control_id" value="{button_id}"/>\n'
-        f'      <param name="label" value="{_escape(label)}"/>\n'
-        f'      <param name="onclick_action" value="{_escape(onclick_action)}"/>\n'
-        f'      <param name="selected_condition" value="{_escape(selected_condition)}"/>\n'
-        f'    </include>\n'
+        f'    <item id="{item_id}">\n'
+        f'      <label>{_escape(label)}</label>\n'
+        f'      <onclick>{_escape(onclick_action)}</onclick>\n'
+        f'      <property name="token">{_escape(token)}</property>\n'
+        f'    </item>\n'
     )
 
 
@@ -238,25 +239,17 @@ def _all_pill():
     """Special-case 'All' pill: clears the filter property to 'all' (sentinel
     meaning no filter active). Selected when prop is 'all' or empty."""
     onclick = "SetProperty(altus.search.filter.kind,all,home)"
-    selected = (
-        "String.IsEqual(Window(home).Property(altus.search.filter.kind),all) | "
-        "String.IsEmpty(Window(home).Property(altus.search.filter.kind))"
-    )
-    return _filter_button_block("All", FILTER_BASE_BUTTON_ID, onclick, selected)
+    return _filter_item_block("All", FILTER_BASE_ITEM_ID, onclick, "all")
 
 
-def _kind_pill(kind, button_id):
-    """Per-kind pill: toggles bracketed kind token in the filter property via
-    helper RunScript route. Selected when the bracketed token is present."""
+def _kind_pill(kind, item_id):
+    """Per-kind pill: toggles the @-delimited kind token in the filter
+    property via helper RunScript route. Selected when the token is present."""
     onclick = (
         "RunScript(script.altus.helper,mode=toggle_search_filter&kind=%s)"
         % quote(kind, safe="")
     )
-    selected = (
-        "String.Contains(Window(home).Property(altus.search.filter.kind),@%s@)"
-        % kind
-    )
-    return _filter_button_block(kind, button_id, onclick, selected)
+    return _filter_item_block(kind, item_id, onclick, "@%s@" % kind)
 
 
 def _build_filter_xml(kinds):
@@ -270,7 +263,7 @@ def _build_filter_xml(kinds):
         _all_pill(),
     ]
     for i, kind in enumerate(kinds, start=1):
-        parts.append(_kind_pill(kind, FILTER_BASE_BUTTON_ID + i))
+        parts.append(_kind_pill(kind, FILTER_BASE_ITEM_ID + i))
     parts.append('  </include>\n')
     parts.append('</includes>\n')
     return "".join(parts)
