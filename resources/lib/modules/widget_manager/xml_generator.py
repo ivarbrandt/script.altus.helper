@@ -40,6 +40,12 @@ WALL_INCLUDES = {
     "WidgetListPVR": "HomeWallPVR",
 }
 
+# PVR walls whose items are scheduled or past rather than currently airing.
+# These show a start-end range ("10:00 PM - 11:00 PM") on the card's time line
+# instead of the default "2h 30m - Ends at 4:00 PM", which only makes sense for
+# a programme that is on right now.
+PVR_TIME_RANGE_TARGETS = {"tvtimers", "tvrecordings", "tvsearch"}
+
 # Hardcoded icon overrides for specific widget paths. Keyed by widget path,
 # value is emitted as the `icon` param on the include.
 HARDCODED_WIDGET_ICONS = {
@@ -214,6 +220,8 @@ def _build_wall_xml(widget, list_id, row_id, section_list_ids):
         path=_escape_ampersand(widget["path"]),
         target=widget["target"],
     )
+    if widget["target"] in PVR_TIME_RANGE_TARGETS:
+        xml += '\n          <param name="time_label" value="$VAR[PVRTimeRangeVar]"/>'
     if widget.get("sortby"):
         xml += '\n          <param name="sortby" value="%s"/>' % widget["sortby"]
     if widget.get("sortorder"):
