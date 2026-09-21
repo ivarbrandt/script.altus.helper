@@ -442,11 +442,34 @@ def _remap_wall_types(cm):
     cm.dbcon.commit()
 
 
+def _fix_addon_onclicks(cm):
+    """Rebuild stored onclicks that send an add-on path to the launcher window.
+
+    build_onclick used to route every addons:// path to ActivateWindow(1100,...),
+    and the launcher ignores the path. Tabs get their onclick from build_onclick
+    on every generation, but sections and submenus store theirs, so the ones it
+    wrote are rebuilt from their path here.
+    """
+    from modules.widget_manager.path_browser import build_onclick
+
+    for table in ("sections", "submenus"):
+        rows = cm.dbcur.execute(
+            "SELECT id, onclick FROM %s WHERE onclick LIKE 'ActivateWindow(1100,%%'" % table
+        ).fetchall()
+        for row in rows:
+            path = row["onclick"][len("ActivateWindow(1100,"):].split(",")[0].rstrip(")")
+            cm.dbcur.execute(
+                "UPDATE %s SET onclick = ? WHERE id = ?" % table,
+                (build_onclick(path, ""), row["id"]),
+            )
+    cm.dbcon.commit()
+
+
 def migrate_to_walls(cm=None):
     """Reshape the active widget config for home walls.
 
     Safe to run any number of times: with no stacked widgets, default Category
-    widgets or wall-less display types left, it changes nothing. Pass an open
+    widgets, wall-less display types or launcher onclicks left, it changes nothing. Pass an open
     ConfigManager to reuse it; otherwise one is opened and closed here.
     """
     own = cm is None
@@ -456,6 +479,7 @@ def migrate_to_walls(cm=None):
         _expand_stacked_widgets(cm)
         _convert_category_widgets(cm)
         _remap_wall_types(cm)
+        _fix_addon_onclicks(cm)
     finally:
         if own:
             cm.close()

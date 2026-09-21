@@ -241,6 +241,17 @@ _ONCLICK_OVERRIDES = {
     "library://video/": "ActivateWindow(Videos,root)",
 }
 
+# Launchable add-on lists (addons://sources/<content>/) open in their media
+# window, as Kodi's own home does; every other addons:// path is add-on
+# management and opens the add-on browser.
+_ADDON_SOURCE_WINDOWS = {
+    "video": "Videos",
+    "audio": "Music",
+    "executable": "Programs",
+    "image": "Pictures",
+    "game": "Games",
+}
+
 
 def browse(include_weather=True, allow_multi=True, multi_heading=None):
     """
@@ -326,8 +337,13 @@ def build_onclick(path, target):
             return "ActivateWindow(RadioChannels)"
         # Generic PVR fallback
         return "ActivateWindow(TVChannels)"
+    if path.startswith("addons://sources/"):
+        content = path[len("addons://sources/"):].split("/")[0]
+        window = _ADDON_SOURCE_WINDOWS.get(content)
+        if window:
+            return "ActivateWindow(%s,%s,return)" % (window, path)
     if path.startswith("addons://"):
-        return "ActivateWindow(1100,%s,return)" % path
+        return "ActivateWindow(AddonBrowser,%s,return)" % path
     if path.startswith("androidapp://"):
         return "StartAndroidActivity(%s)" % path
     if path.startswith("videodb://"):
