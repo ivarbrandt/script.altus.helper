@@ -7,18 +7,6 @@ from .helper import winprop
 
 
 ADDONBROWSER_WINDOW_ID = 10040
-ADDONBROWSER_ROOT_SEGMENTS = (
-    "user",
-    "repos",
-    "outdated",
-    "recently_updated",
-    "dependencies",
-    "running",
-    "all",
-    "search",
-    "sources",
-    "install",
-)
 ADDONBROWSER_CRUMBS = 3
 ADDONBROWSER_MAX_ITEMS = 200
 ADDONBROWSER_TICK = 0.3
@@ -174,9 +162,14 @@ def _addonbrowser_trail(trail, folder):
     return [folder]
 
 
-def _addonbrowser_is_root(folder):
-    tail = folder[len("addons://") :].strip("/")
-    return not tail or tail in ADDONBROWSER_ROOT_SEGMENTS
+def _addonbrowser_is_root(folder, root):
+    """The header says "root" for the root itself, and the menu names which one.
+
+    Only the root the window was sent to is spoken for: drilling into My add-ons
+    from the addons:// listing leaves the menu sitting on Add-ons, so that step
+    has to be named by the header.
+    """
+    return folder == root or not folder[len("addons://") :].strip("/")
 
 
 def _addonbrowser_name(folder, segment):
@@ -191,11 +184,11 @@ def _addonbrowser_name(folder, segment):
     return name
 
 
-def _addonbrowser_crumbs(trail):
+def _addonbrowser_crumbs(trail, root):
     """Name every step of the walk below the root, the header says that part."""
     names = []
     for folder in trail:
-        if not folder.startswith("addons://") or _addonbrowser_is_root(folder):
+        if not folder.startswith("addons://") or _addonbrowser_is_root(folder, root):
             continue
         names.append(_addonbrowser_name(folder, folder.strip("/").split("/")[-1]))
     return names[-ADDONBROWSER_CRUMBS:]
@@ -209,7 +202,8 @@ def _addonbrowser_write_crumbs(window, trail):
     is known, the way the launcher's panels hold the parent until the child is
     ready.
     """
-    names = _addonbrowser_crumbs(trail)
+    root = xbmc.getInfoLabel(f"Window({ADDONBROWSER_WINDOW_ID}).Property(root_path)")
+    names = _addonbrowser_crumbs(trail, _addonbrowser_folder(root) if root else "")
     for index in range(ADDONBROWSER_CRUMBS):
         window.setProperty(
             "crumb%d" % (index + 1), names[index] if index < len(names) else ""
