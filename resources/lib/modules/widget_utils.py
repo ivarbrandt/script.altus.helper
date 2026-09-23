@@ -199,13 +199,19 @@ def _addonbrowser_crumbs(trail):
     return names[-ADDONBROWSER_CRUMBS:]
 
 
-def _addonbrowser_write_crumbs(window, path, trail):
+def _addonbrowser_write_crumbs(window, trail):
+    """Name the walk in one go.
+
+    The header holds whatever was written last, so nothing here may describe a
+    path we are only part-way into: the crumbs change once, when the new walk
+    is known, the way the launcher's panels hold the parent until the child is
+    ready.
+    """
     names = _addonbrowser_crumbs(trail)
     for index in range(ADDONBROWSER_CRUMBS):
         window.setProperty(
             "crumb%d" % (index + 1), names[index] if index < len(names) else ""
         )
-    window.setProperty("crumb_path", path)
 
 
 def addonbrowser_monitor(menu_id):
@@ -244,6 +250,7 @@ def addonbrowser_monitor(menu_id):
     last_listing = ()
     trail = []
     countdown = delay_seconds
+    _addonbrowser_write_crumbs(window, trail)
     while not monitor.abortRequested():
         if monitor.waitForAbort(0.2):
             break
@@ -262,7 +269,7 @@ def addonbrowser_monitor(menu_id):
         if folder and listing != last_listing:
             last_listing = listing
             _addonbrowser_cache_listing(folder)
-            _addonbrowser_write_crumbs(window, path, trail)
+            _addonbrowser_write_crumbs(window, trail)
         focus_id = xbmc.getInfoLabel("System.CurrentControlID")
         if focus_id and focus_id != menu_id:
             countdown = delay_seconds
