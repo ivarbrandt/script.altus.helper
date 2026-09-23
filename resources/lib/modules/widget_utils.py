@@ -5,6 +5,9 @@ from .helper import winprop
 # from modules.logger import logger
 
 
+ADDONBROWSER_WINDOW_ID = 10040
+
+
 def get_skin_variable(variable_name):
     return xbmc.getInfoLabel(f"$VAR[{variable_name}]")
 
@@ -105,6 +108,56 @@ def widget_monitor(list_id):
                 pass
         else:
             monitor.waitForAbort(0.1)
+
+
+def addonbrowser_menu_monitor(menu_id):
+    """Load the highlighted root once the selection has settled.
+
+    Runs while the add-on browser's roots menu holds focus: each move restarts
+    the countdown, and a selection that stays put swaps the window's listing to
+    that root. The root the window is already inside is left alone, so stepping
+    out to the menu and back keeps the place you were at.
+
+    A load leaves no control focused for a moment, so the run ends only when
+    another control takes focus or the window changes; treating "nothing is
+    focused" as an exit killed the monitor after the first few loads.
+    """
+    monitor = xbmc.Monitor()
+    try:
+        delay = float(xbmc.getInfoLabel("Skin.String(altus_addonbrowser_menu_delay)"))
+    except (ValueError, TypeError):
+        delay = 400
+    delay_seconds = delay / 1000
+    path_info = f"Container({menu_id}).ListItem.Property(path)"
+    root_info = f"Window({ADDONBROWSER_WINDOW_ID}).Property(root_path)"
+    last_path = xbmc.getInfoLabel(path_info)
+    countdown = delay_seconds
+    while not monitor.abortRequested():
+        if monitor.waitForAbort(0.25):
+            break
+        focus_id = xbmc.getInfoLabel("System.CurrentControlID")
+        if xbmcgui.getCurrentWindowId() != ADDONBROWSER_WINDOW_ID or (
+            focus_id and focus_id != menu_id
+        ):
+            break
+        if not focus_id:
+            continue
+        current_path = xbmc.getInfoLabel(path_info)
+        if current_path != last_path:
+            last_path = current_path
+            countdown = delay_seconds
+            continue
+        if not current_path or current_path in (
+            xbmc.getInfoLabel("Container.FolderPath"),
+            xbmc.getInfoLabel(root_info),
+        ):
+            continue
+        countdown -= 0.25
+        if countdown > 0:
+            continue
+        countdown = delay_seconds
+        xbmc.executebuiltin(f"SetProperty(root_path,{current_path},AddonBrowser)")
+        xbmc.executebuiltin(f"Container.Update({current_path},replace)")
 
 
 def season_monitor(container_id):

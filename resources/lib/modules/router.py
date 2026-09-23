@@ -45,6 +45,11 @@ def routing():
 
         return widget_monitor(_get("list_id"))
 
+    if mode == "addonbrowser_menu_monitor":
+        from modules.widget_utils import addonbrowser_menu_monitor
+
+        return addonbrowser_menu_monitor(_get("menu_id"))
+
     if mode == "season_monitor":
         from modules.widget_utils import season_monitor
 
