@@ -21,6 +21,8 @@ ADDONBROWSER_ROOT_SEGMENTS = (
 )
 ADDONBROWSER_CRUMBS = 3
 ADDONBROWSER_MAX_ITEMS = 200
+ADDONBROWSER_TICK = 0.3
+ADDONBROWSER_MENU_TICK = 0.2
 
 _addonbrowser_names = {}
 _addonbrowser_children = {}
@@ -214,45 +216,39 @@ def _addonbrowser_write_crumbs(window, trail):
         )
 
 
-def addonbrowser_monitor(menu_id):
-    """Name the path header, and load the highlighted root once it settles.
+def _addonbrowser_claim(window, key):
+    """Claim the window for this run, and hand back how to tell it was taken.
 
-    One loop for the window's whole life, started from <onload>. It names each
-    segment of the current path for the header, and while the roots menu holds
-    focus it swaps the listing to the highlighted root after a pause; each move
-    restarts that countdown, and the root the window is already inside is left
-    alone, so stepping out to the menu and back keeps your place.
+    A skin reload re-opens this window instantly, so a run that waits for the
+    window to go away stays alive beside the run that replaces it, both writing
+    the same properties. Newest claim wins.
+    """
+    token = str(time.time())
+    window.setProperty(key, token)
+    return token, f"Window({ADDONBROWSER_WINDOW_ID}).Property({key})"
+
+
+def addonbrowser_crumb_monitor():
+    """Name the walk for the path header, for as long as the window is open.
+
+    Nothing in an addons:// path is a name, and Kodi drops the category from a
+    child path, so the walk is followed rather than parsed: each listing is read
+    while we stand in it, and what was in it tells a step inwards from a step
+    back. Anything unrecognised starts the trail over, so a bad guess can only
+    shorten the header, never misdirect it.
 
     Kodi answers for the *active* window, so a dialog on top pauses the work
-    instead of ending it, and the run ends when the browser closes. A load
-    leaves no control focused for a moment, which is why nothing is focused is
-    not treated as focus having left the menu.
-
-    Each run claims the window with a token and stops as soon as another run
-    takes it: a skin reload re-opens this window instantly, so waiting for the
-    window to go away would leave the old run alive alongside the new one,
-    writing stale names over fresh ones.
+    instead of ending it.
     """
     monitor = xbmc.Monitor()
-    try:
-        delay = float(xbmc.getInfoLabel("Skin.String(altus_addonbrowser_menu_delay)"))
-    except (ValueError, TypeError):
-        delay = 400
-    delay_seconds = delay / 1000
     window = xbmcgui.Window(ADDONBROWSER_WINDOW_ID)
-    token = str(time.time())
-    window.setProperty("monitor", token)
-    token_info = f"Window({ADDONBROWSER_WINDOW_ID}).Property(monitor)"
-    path_info = f"Container({menu_id}).ListItem.Property(path)"
-    root_info = f"Window({ADDONBROWSER_WINDOW_ID}).Property(root_path)"
-    last_path = xbmc.getInfoLabel(path_info)
+    token, token_info = _addonbrowser_claim(window, "crumb_monitor")
     last_folder = ""
     last_listing = ()
     trail = []
-    countdown = delay_seconds
     _addonbrowser_write_crumbs(window, trail)
     while not monitor.abortRequested():
-        if monitor.waitForAbort(0.2):
+        if monitor.waitForAbort(ADDONBROWSER_TICK):
             break
         if xbmc.getInfoLabel(token_info) != token:
             break
@@ -262,18 +258,52 @@ def addonbrowser_monitor(menu_id):
             continue
         path = xbmc.getInfoLabel("Container.FolderPath")
         folder = _addonbrowser_folder(path) if path else ""
+        if not folder:
+            continue
         listing = (folder, xbmc.getInfoLabel("Container.NumItems"))
-        if folder and folder != last_folder:
+        if folder != last_folder:
             last_folder = folder
             trail = _addonbrowser_trail(trail, folder)
-        if folder and listing != last_listing:
+        if listing != last_listing:
             last_listing = listing
             _addonbrowser_cache_listing(folder)
             _addonbrowser_write_crumbs(window, trail)
+
+
+def addonbrowser_menu_monitor(menu_id):
+    """Load the highlighted root once the selection has settled.
+
+    Runs while the roots menu holds focus: each move restarts the countdown, and
+    a selection that stays put swaps the window's listing to that root. The root
+    the window is already inside is left alone, so stepping out to the menu and
+    back keeps the place you were at.
+
+    A load leaves no control focused for a moment, so the run ends only when
+    another control takes focus or the window changes; treating "nothing is
+    focused" as an exit killed the monitor after the first few loads.
+    """
+    monitor = xbmc.Monitor()
+    try:
+        delay = float(xbmc.getInfoLabel("Skin.String(altus_addonbrowser_menu_delay)"))
+    except (ValueError, TypeError):
+        delay = 400
+    delay_seconds = delay / 1000
+    window = xbmcgui.Window(ADDONBROWSER_WINDOW_ID)
+    token, token_info = _addonbrowser_claim(window, "menu_monitor")
+    path_info = f"Container({menu_id}).ListItem.Property(path)"
+    root_info = f"Window({ADDONBROWSER_WINDOW_ID}).Property(root_path)"
+    last_path = xbmc.getInfoLabel(path_info)
+    countdown = delay_seconds
+    while not monitor.abortRequested():
+        if monitor.waitForAbort(ADDONBROWSER_MENU_TICK):
+            break
+        if xbmc.getInfoLabel(token_info) != token:
+            break
         focus_id = xbmc.getInfoLabel("System.CurrentControlID")
-        if focus_id and focus_id != menu_id:
-            countdown = delay_seconds
-            continue
+        if xbmcgui.getCurrentWindowId() != ADDONBROWSER_WINDOW_ID or (
+            focus_id and focus_id != menu_id
+        ):
+            break
         if not focus_id:
             continue
         current_path = xbmc.getInfoLabel(path_info)
@@ -286,7 +316,7 @@ def addonbrowser_monitor(menu_id):
             xbmc.getInfoLabel(root_info),
         ):
             continue
-        countdown -= 0.2
+        countdown -= ADDONBROWSER_MENU_TICK
         if countdown > 0:
             continue
         countdown = delay_seconds
