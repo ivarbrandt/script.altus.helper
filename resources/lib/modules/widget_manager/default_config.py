@@ -365,7 +365,7 @@ DEFAULT_SECTIONS = [
     },
     {
         "name": "$LOCALIZE[24001]",
-        "onclick": "ActivateWindow(1100)",
+        "onclick": "ActivateWindow(AddonBrowser)",
         "icon": "icons/sidemenu/addons.png",
         "widgets": [
             (

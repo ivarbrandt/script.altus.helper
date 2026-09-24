@@ -14,6 +14,7 @@ import xbmc, xbmcvfs, xbmcgui
 from modules.widget_manager.config_manager import ConfigManager
 
 LAUNCHER_ONCLICK = "ActivateWindow(1100)"
+BROWSER_ONCLICK = "ActivateWindow(AddonBrowser)"
 
 old_database_path = xbmcvfs.translatePath(
     "special://profile/addon_data/script.altus.helper/cpath_cache.db"
@@ -467,24 +468,18 @@ def _fix_addon_onclicks(cm):
     cm.dbcon.commit()
 
 
-def _point_addons_section_to_launcher(cm):
-    """Send the default Add-ons section to the launcher instead of Kodi's browser.
+def _point_launcher_onclicks_to_browser(cm):
+    """Send anything aimed at the launcher window to Kodi's browser.
 
-    Only a section that still matches the default pairing is touched: the
-    default's name with the old `ActivateWindow(AddonBrowser)` onclick. One
-    that was renamed or repointed keeps whatever it has, as with the default
-    Category widgets.
+    The launcher's design lives in the browser itself now, so window 1100 is on
+    its way out and every onclick still aimed at it would go nowhere. Matching
+    on the onclick alone, not the section's name, catches submenus and renamed
+    sections too.
     """
-    from modules.widget_manager.default_config import DEFAULT_SECTIONS
-
-    names = [
-        s["name"] for s in DEFAULT_SECTIONS
-        if s.get("onclick") == LAUNCHER_ONCLICK
-    ]
-    for name in names:
+    for table in ("sections", "submenus"):
         cm.dbcur.execute(
-            "UPDATE sections SET onclick = ? WHERE name = ? AND onclick = ?",
-            (LAUNCHER_ONCLICK, name, "ActivateWindow(AddonBrowser)"),
+            "UPDATE %s SET onclick = ? WHERE onclick = ?" % table,
+            (BROWSER_ONCLICK, LAUNCHER_ONCLICK),
         )
     cm.dbcon.commit()
 
@@ -504,7 +499,7 @@ def migrate_to_walls(cm=None):
         _convert_category_widgets(cm)
         _remap_wall_types(cm)
         _fix_addon_onclicks(cm)
-        _point_addons_section_to_launcher(cm)
+        _point_launcher_onclicks_to_browser(cm)
     finally:
         if own:
             cm.close()

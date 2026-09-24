@@ -242,7 +242,8 @@ _ONCLICK_OVERRIDES = {
 }
 
 # Launchable add-on lists (addons://sources/<content>/) open in their media
-# window, as Kodi's own home does; every other addons:// path is add-on
+# window, as Kodi's own home does: entering one runs the add-on, and its
+# content needs that window's views. Every other addons:// path is add-on
 # management and opens the add-on browser.
 _ADDON_SOURCE_WINDOWS = {
     "video": "Videos",
