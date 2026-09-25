@@ -259,7 +259,7 @@ def _build_wall_section_xml(section_pos, widgets):
     <control type="group" id="{group_id}">
       <visible>String.IsEqual(Container(9000).ListItem.Property(menu_id),{group_id})</visible>
       <defaultcontrol>{row_id}</defaultcontrol>
-      <include content="Section_Visible_Right_Delayed">
+      <include content="Section_Vis_FadeZoom_Delayed">
         <param name="menu_id" value="{group_id}"/>
       </include>
       <include content="HomeWallHeader">
